@@ -1,45 +1,51 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
+import React from 'react';
+import { useColorScheme, StatusBar } from 'react-native'; // Tambahkan StatusBar
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { NewAppScreen } from '@react-native/new-app-screen';
-import { StatusBar, StyleSheet, useColorScheme, View } from 'react-native';
-import {
-  SafeAreaProvider,
-  useSafeAreaInsets,
-} from 'react-native-safe-area-context';
+import LoginScreen from './src/LoginScreen';
+import HomeScreen from './src/HomeScreen';
+import RealisasiProduksiScreen from './src/RealisasiProduksiScreen';
 
-function App() {
+const Stack = createNativeStackNavigator();
+
+function App(): React.JSX.Element {
   const isDarkMode = useColorScheme() === 'dark';
 
   return (
     <SafeAreaProvider>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <AppContent />
+      {/* Menyesuaikan warna bar status baterai/jam di atas HP */}
+      <StatusBar 
+        backgroundColor="#3F51B5" 
+        barStyle="light-content" 
+      />
+      
+      <NavigationContainer>
+        <Stack.Navigator 
+          initialRouteName="Login"
+          screenOptions={{
+            headerShown: false // Sembunyikan header global karena kita pakai header kustom
+          }}
+        >
+          <Stack.Screen
+            name="Login"
+            component={LoginScreen}
+          />
+
+          <Stack.Screen
+            name="Home"
+            component={HomeScreen}
+          />
+          <Stack.Screen 
+            name="RealisasiProduksi" 
+            component={RealisasiProduksiScreen} 
+            options={{ headerShown: false }}
+          />
+        </Stack.Navigator>
+      </NavigationContainer>
     </SafeAreaProvider>
   );
 }
-
-function AppContent() {
-  const safeAreaInsets = useSafeAreaInsets();
-
-  return (
-    <View style={styles.container}>
-      <NewAppScreen
-        templateFileName="App.tsx"
-        safeAreaInsets={safeAreaInsets}
-      />
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-});
 
 export default App;
