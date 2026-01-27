@@ -17,18 +17,17 @@ import {
   Modal,
 } from "react-native";
 import api from "../src/api/api.services";
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 
-// =====================
-// Types
-// =====================
 type DetailItem = {
   SKU: string;
   NamaBarang: string;
   Satuan: string;
-  Panjang: string;
-  Lebar: string;
+  Panjang: number;
+  Lebar: number;
+  Expired: string | null;
   System: number;
-  Fisik: number | null;
+  Fisik: number;
   Qty: number;
   Harga: number;
   Nilai: number;
@@ -44,11 +43,8 @@ type MasterHeader = {
 };
 
 type GudangLookup = { Kode: string; Nama: string };
-type TypeKorLookup = { kode: string | number; nama: string };
+type TypeKorLookup = { kode: number; nama: string };
 
-// =====================
-// Const
-// =====================
 const PRIMARY = "#3F51B5";
 const INDIGO = "#1A237E";
 const BG = "#F5F5F5";
@@ -58,57 +54,20 @@ const MUTED = "#6B7280";
 const SUCCESS = "#16A34A";
 const DANGER = "#DC2626";
 
-const LIST_TYPE_KOR: { nama: string; kode: number }[] = [
-  { nama: "Terima", kode: 100 },
-  { nama: "Keluar", kode: 200 },
-  { nama: "Sisa Produksi", kode: 300 },
-];
-
 const num = (v: any) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
 
-const normalizeText = (s: any) => String(s ?? "").trim().toLowerCase();
+const pickArray = (data: any): any[] => {
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data?.data)) return data.data.data;
+  return [];
+};
+
 const fixNegZero = (n: number) => (Object.is(n, -0) ? 0 : n);
 
-async function getLatestKoreksiDetailMap(params: { tanggalISO: string; gudangNama: string }) {
-  const { tanggalISO, gudangNama } = params;
-
-  const d = new Date(tanggalISO);
-  const start = new Date(d);
-  start.setDate(d.getDate() - 14);
-  const end = new Date(d);
-  end.setDate(d.getDate() + 14);
-
-  const startDate = start.toISOString().slice(0, 10);
-  const endDate = end.toISOString().slice(0, 10);
-
-  try {
-    const res = await api.get("/mmt/koreksi-stok", { params: { startDate, endDate } });
-    const list = Array.isArray(res.data?.data) ? res.data.data : [];
-    if (!list.length) return new Map<string, { fisik: number }>();
-
-    const gTarget = normalizeText(gudangNama);
-    const byGudang = list.filter((x: any) => normalizeText(x?.Gudang) === gTarget);
-    const chosen = byGudang[0] || null;
-
-    const map = new Map<string, { fisik: number }>();
-    const detailArr = Array.isArray(chosen?.Detail) ? chosen.Detail : [];
-    for (const dItem of detailArr) {
-      const kode = String(dItem?.Kode ?? "");
-      if (!kode) continue;
-      map.set(kode, { fisik: num(dItem?.Fisik ?? 0) });
-    }
-    return map;
-  } catch {
-    return new Map<string, { fisik: number }>();
-  }
-}
-
-// =====================
-// Simple Select Modal (tanpa lib)
-// =====================
 function SelectModal<T>(props: {
   visible: boolean;
   title: string;
@@ -155,13 +114,22 @@ function SelectModal<T>(props: {
 
 export default function FormKoreksiStok({ navigation }: any) {
   const [saving, setSaving] = useState(false);
-  const [loadingStok, setLoadingStok] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [headerCollapsed, setHeaderCollapsed] = useState<boolean>(false);
+
+  const LIST_TYPE_KOR: TypeKorLookup[] = useMemo(
+    () => [
+      { nama: "Terima", kode: 100 },
+      { nama: "Keluar", kode: 200 },
+      { nama: "Sisa Produksi", kode: 300 },
+    ],
+    []
+  );
 
   const [loadingLookup, setLoadingLookup] = useState(false);
   const [listGudang, setListGudang] = useState<GudangLookup[]>([]);
-  const [listTypeKor, setListTypeKor] = useState<TypeKorLookup[]>([]);
   const [openGudang, setOpenGudang] = useState(false);
+
   const [openType, setOpenType] = useState(false);
 
   const [header, setHeader] = useState<MasterHeader>({
@@ -177,14 +145,117 @@ export default function FormKoreksiStok({ navigation }: any) {
   const [search, setSearch] = useState("");
 
   const draftFisikRef = useRef<Map<string, string>>(new Map());
+  const draftPanjangRef = useRef<Map<string, string>>(new Map());
+  const draftLebarRef = useRef<Map<string, string>>(new Map());
+
+  const addRow = useCallback(() => {
+    setDetails((prev) => [
+      ...prev,
+      {
+        SKU: "",
+        NamaBarang: "",
+        Satuan: "",
+        Panjang: 0,
+        Lebar: 0,
+        Expired: null,
+        System: 0,
+        Fisik: 0,
+        Qty: 0,
+        Harga: 0,
+        Nilai: 0,
+      },
+    ]);
+  }, []);
+
+  const removeRow = useCallback((index: number) => {
+    setDetails((prev) => {
+      const copy = [...prev];
+      const removed = copy[index];
+      copy.splice(index, 1);
+
+      if (removed?.SKU) {
+        draftFisikRef.current.delete(removed.SKU);
+        draftPanjangRef.current.delete(removed.SKU);
+        draftLebarRef.current.delete(removed.SKU);
+      }
+
+      return copy.length
+        ? copy
+        : [
+            {
+              SKU: "",
+              NamaBarang: "",
+              Satuan: "",
+              Panjang: 0,
+              Lebar: 0,
+              Expired: null,
+              System: 0,
+              Fisik: 0,
+              Qty: 0,
+              Harga: 0,
+              Nilai: 0,
+            },
+          ];
+    });
+  }, []);
+
+  const calculateRowByIndex = useCallback((index: number, patch?: Partial<Pick<DetailItem, "Fisik" | "System" | "Harga">>) => {
+    setDetails((prev) => {
+      const copy = [...prev];
+      const item = copy[index];
+      if (!item) return prev;
+
+      const next = { ...item, ...patch };
+
+      const fisik = num(next.Fisik);
+      const system = num(next.System);
+      const harga = num(next.Harga);
+
+      const qty = fisik - system;
+      const nilai = qty * harga;
+
+      copy[index] = {
+        ...next,
+        Fisik: fisik,
+        System: system,
+        Harga: harga,
+        Qty: fixNegZero(qty),
+        Nilai: fixNegZero(nilai),
+      };
+      return copy;
+    });
+  }, []);
+
+  const commitUkuran = useCallback(
+    (sku: string, indexHint: number, field: "Panjang" | "Lebar", valueStr: string, opts?: { keepDraft?: boolean }) => {
+      const trimmed = String(valueStr ?? "").trim();
+      const val = trimmed === "" ? 0 : num(trimmed);
+
+      setDetails((prev) => {
+        const copy = [...prev];
+        const realIndex = copy[indexHint]?.SKU === sku ? indexHint : copy.findIndex((x) => x.SKU === sku);
+        const idx = realIndex >= 0 ? realIndex : indexHint;
+        const item = copy[idx];
+        if (!item) return prev;
+
+        copy[idx] = { ...item, [field]: val } as DetailItem;
+        return copy;
+      });
+
+      if (!opts?.keepDraft) {
+        if (field === "Panjang") draftPanjangRef.current.delete(sku);
+        if (field === "Lebar") draftLebarRef.current.delete(sku);
+      }
+    },
+    []
+  );
 
   const fetchLookups = useCallback(async () => {
     setLoadingLookup(true);
     try {
       const resGdg = await api.get("/mmt/lookup/gudang");
-
-      const gudangRaw = resGdg?.data?.data ?? [];
-      const gudang: GudangLookup[] = (Array.isArray(gudangRaw) ? gudangRaw : [])
+      const raw = pickArray(resGdg?.data);
+      const gudang: GudangLookup[] = raw
         .map((x: any) => ({
           Kode: String(x?.Kode ?? ""),
           Nama: String(x?.Nama ?? ""),
@@ -193,14 +264,12 @@ export default function FormKoreksiStok({ navigation }: any) {
 
       setListGudang(gudang);
 
-      setListTypeKor(LIST_TYPE_KOR.map((x) => ({ kode: x.kode, nama: x.nama })));
-
       if (header.GudangKode) {
         const found = gudang.find((g) => g.Kode === header.GudangKode);
         if (found) setHeader((p) => ({ ...p, GudangNama: found.Nama }));
       }
     } catch (err: any) {
-      console.log("Lookup gudang gagal:", err?.response?.data || err?.message || err);
+      console.log("Gagal load lookup gudang:", err?.response?.data || err?.message || err);
       Alert.alert("Error", String(err?.response?.data?.message || err?.message || "Gagal load lookup gudang"));
     } finally {
       setLoadingLookup(false);
@@ -209,7 +278,7 @@ export default function FormKoreksiStok({ navigation }: any) {
 
   useEffect(() => {
     fetchLookups();
-  }, [fetchLookups]);
+  }, []);
 
   const totalNilai = useMemo(() => details.reduce((a, b) => a + (b.Nilai || 0), 0), [details]);
 
@@ -223,42 +292,31 @@ export default function FormKoreksiStok({ navigation }: any) {
     });
   }, [details, search]);
 
+  const typeKorName = useMemo(() => LIST_TYPE_KOR.find((t) => t.kode === header.TypeKor)?.nama ?? "", [LIST_TYPE_KOR, header.TypeKor]);
+
   const commitFisik = useCallback(
     (sku: string, indexHint: number, valueStr: string, opts?: { keepDraft?: boolean }) => {
       const trimmed = String(valueStr ?? "").trim();
-      const valOrNull = trimmed === "" ? null : num(trimmed);
+      const val = trimmed === "" ? 0 : num(trimmed);
 
-      setDetails((prev) => {
-        const copy = [...prev];
-        const realIndex = copy[indexHint]?.SKU === sku ? indexHint : copy.findIndex((x) => x.SKU === sku);
-        if (realIndex < 0) return prev;
+      const realIndex = (() => {
+        const direct = details[indexHint];
+        if (direct?.SKU === sku) return indexHint;
+        const idx = details.findIndex((x) => x.SKU === sku);
+        return idx >= 0 ? idx : indexHint;
+      })();
 
-        const item = copy[realIndex];
-        const system = num(item.System);
-        const harga = num(item.Harga);
-
-        const fisik = valOrNull;
-        const qty = fisik === null ? 0 - system : num(fisik) - system;
-        const nilai = qty * harga;
-
-        copy[realIndex] = {
-          ...item,
-          Fisik: fisik,
-          Qty: fixNegZero(qty),
-          Nilai: fixNegZero(nilai),
-        };
-        return copy;
-      });
+      calculateRowByIndex(realIndex, { Fisik: val });
 
       if (!opts?.keepDraft) draftFisikRef.current.delete(sku);
     },
-    []
+    [details, calculateRowByIndex]
   );
 
   const adjustFisik = useCallback(
-    (sku: string, indexHint: number, currentFisik: number | null, delta: number) => {
+    (sku: string, indexHint: number, currentFisik: number, delta: number) => {
       const map = draftFisikRef.current;
-      const base = map.has(sku) ? num(map.get(sku)) : currentFisik === null ? 0 : num(currentFisik);
+      const base = map.has(sku) ? num(map.get(sku)) : num(currentFisik);
       const next = String(base + delta);
       map.set(sku, next);
       commitFisik(sku, indexHint, next, { keepDraft: true });
@@ -266,47 +324,40 @@ export default function FormKoreksiStok({ navigation }: any) {
     [commitFisik]
   );
 
-  const loadAllStockFromGudang = async () => {
+  const loadAllStockFromGudang = useCallback(async () => {
     if (!header.GudangKode) return Alert.alert("Validasi", "Pilih gudang terlebih dahulu");
 
-    setLoadingStok(true);
+    setLoading(true);
     try {
-      const koreksiMap = await getLatestKoreksiDetailMap({
-        tanggalISO: header.Tanggal,
-        gudangNama: header.GudangNama,
-      });
-
       const res = await api.get("/mmt/koreksi-stok/stok", {
         params: { gudangKode: header.GudangKode, tanggal: header.Tanggal },
       });
 
-      const dataStok = res?.data?.data ?? [];
-      if (!Array.isArray(dataStok) || dataStok.length === 0) {
+      const dataStok = pickArray(res?.data);
+      if (!dataStok.length) {
         setDetails([]);
         draftFisikRef.current.clear();
+        draftPanjangRef.current.clear();
+        draftLebarRef.current.clear();
         Alert.alert("Info", "Tidak ada data stok ditemukan.");
         return;
       }
 
       const mapped: DetailItem[] = dataStok.map((item: any) => {
-        const sku = String(item?.Kode ?? "");
         const system = num(item?.Stok ?? 0);
         const harga = num(item?.HRGBELI ?? 0);
-
-        const found = koreksiMap.get(sku);
-        const fisik = found ? num(found.fisik) : 0;
-
-        const qty = fisik - system;
+        const qty = 0 - system;
         const nilai = qty * harga;
 
         return {
-          SKU: sku,
+          SKU: String(item?.Kode ?? ""),
           NamaBarang: String(item?.Nama ?? ""),
           Satuan: String(item?.Satuan ?? ""),
-          Panjang: String(item?.Panjang ?? "0"),
-          Lebar: String(item?.Lebar ?? "0"),
+          Panjang: num(item?.Panjang ?? 0),
+          Lebar: num(item?.Lebar ?? 0),
+          Expired: null,
           System: system,
-          Fisik: fisik,
+          Fisik: 0,
           Qty: fixNegZero(qty),
           Harga: harga,
           Nilai: fixNegZero(nilai),
@@ -314,26 +365,26 @@ export default function FormKoreksiStok({ navigation }: any) {
       });
 
       draftFisikRef.current.clear();
+      draftPanjangRef.current.clear();
+      draftLebarRef.current.clear();
       setDetails(mapped);
       setHeaderCollapsed(true);
     } catch (e: any) {
       Alert.alert("Gagal", "Gagal memuat stok: " + String(e?.response?.data?.message || e?.message || "Unknown"));
     } finally {
-      setLoadingStok(false);
+      setLoading(false);
     }
-  };
+  }, [header.GudangKode, header.Tanggal]);
 
-  const saveData = async () => {
+  const saveData = useCallback(async () => {
     const validDetails = details.filter((d) => d.SKU && d.SKU.trim() !== "");
-
     if (!header.GudangKode || !header.TypeKor) return Alert.alert("Validasi", "Header harus lengkap!");
     if (validDetails.length === 0) return Alert.alert("Validasi", "Detail barang kosong!");
 
-    const typeName = LIST_TYPE_KOR.find((t) => t.kode === header.TypeKor)?.nama;
-    if (!typeName) return Alert.alert("Validasi", "Tipe koreksi tidak valid!");
-
     setSaving(true);
     try {
+      const typeName = LIST_TYPE_KOR.find((t) => t.kode === header.TypeKor)?.nama;
+
       const payload = {
         header: {
           ...header,
@@ -351,40 +402,74 @@ export default function FormKoreksiStok({ navigation }: any) {
     } finally {
       setSaving(false);
     }
-  };
+  }, [details, header, LIST_TYPE_KOR, navigation]);
 
   const Row = React.memo(({ item, index }: { item: DetailItem; index: number }) => {
-    const [localFisik, setLocalFisik] = useState<string>(() => {
-      const draft = draftFisikRef.current.get(item.SKU);
-      if (draft !== undefined) return draft;
-      return item.Fisik === null ? "" : String(item.Fisik);
-    });
+    const [localFisik, setLocalFisik] = useState<string>(() => draftFisikRef.current.get(item.SKU) ?? String(item.Fisik ?? 0));
+    const [localPanjang, setLocalPanjang] = useState<string>(() => draftPanjangRef.current.get(item.SKU) ?? String(item.Panjang ?? 0));
+    const [localLebar, setLocalLebar] = useState<string>(() => draftLebarRef.current.get(item.SKU) ?? String(item.Lebar ?? 0));
 
     useEffect(() => {
-      const draft = draftFisikRef.current.get(item.SKU);
-      if (draft !== undefined) setLocalFisik(draft);
-      else setLocalFisik(item.Fisik === null ? "" : String(item.Fisik));
-    }, [item.SKU, item.Fisik]);
+      setLocalFisik(draftFisikRef.current.get(item.SKU) ?? String(item.Fisik ?? 0));
+      setLocalPanjang(draftPanjangRef.current.get(item.SKU) ?? String(item.Panjang ?? 0));
+      setLocalLebar(draftLebarRef.current.get(item.SKU) ?? String(item.Lebar ?? 0));
+    }, [item.SKU, item.Fisik, item.Panjang, item.Lebar]);
 
     const qty = item.Qty;
-    const p = String(item.Panjang ?? "").trim();
-    const l = String(item.Lebar ?? "").trim();
-    const ukuranText = `${p ? p : "—"} x ${l ? l : "—"}`;
 
     return (
       <View style={styles.rowCard}>
         <View style={styles.rowHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.skuText}>{item.SKU}</Text>
+            <Text style={styles.skuText}>{item.SKU || "—"}</Text>
             <Text style={styles.namaText} numberOfLines={2}>
-              {item.NamaBarang}
+              {item.NamaBarang || "Nama Barang"}
             </Text>
 
             <Text style={styles.smallMeta}>
-              Satuan: <Text style={styles.smallStrong}>{item.Satuan}</Text>
-              {"  "}•{"  "}
-              Ukuran p x l: <Text style={styles.sizeStrong}>{ukuranText}</Text>
+              Satuan: <Text style={styles.smallStrong}>{item.Satuan || "—"}</Text>
             </Text>
+          </View>
+
+          <TouchableOpacity onPress={() => removeRow(index)} style={styles.deleteBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <MaterialIcons name="restore-from-trash" size={22} color={DANGER} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Ukuran editable (Panjang & Lebar) */}
+        <View style={[styles.gridRow, { marginTop: 10 }]}>
+          <View style={styles.gridCell}>
+            <Text style={styles.gridLabel}>Panjang (m)</Text>
+            <TextInput
+              style={[styles.inputMini, { textAlign: "right" }]}
+              keyboardType="decimal-pad"
+              value={localPanjang}
+              placeholder="0"
+              placeholderTextColor="#9AA0A6"
+              onChangeText={(v) => {
+                setLocalPanjang(v);
+                draftPanjangRef.current.set(item.SKU, v);
+              }}
+              onEndEditing={() => commitUkuran(item.SKU, index, "Panjang", localPanjang, { keepDraft: false })}
+              onBlur={() => commitUkuran(item.SKU, index, "Panjang", localPanjang, { keepDraft: false })}
+            />
+          </View>
+
+          <View style={styles.gridCell}>
+            <Text style={styles.gridLabel}>Lebar (m)</Text>
+            <TextInput
+              style={[styles.inputMini, { textAlign: "right" }]}
+              keyboardType="decimal-pad"
+              value={localLebar}
+              placeholder="0"
+              placeholderTextColor="#9AA0A6"
+              onChangeText={(v) => {
+                setLocalLebar(v);
+                draftLebarRef.current.set(item.SKU, v);
+              }}
+              onEndEditing={() => commitUkuran(item.SKU, index, "Lebar", localLebar, { keepDraft: false })}
+              onBlur={() => commitUkuran(item.SKU, index, "Lebar", localLebar, { keepDraft: false })}
+            />
           </View>
         </View>
 
@@ -435,32 +520,32 @@ export default function FormKoreksiStok({ navigation }: any) {
 
   const typeLabel = (t: TypeKorLookup) => `${t.nama}`;
 
-  const typeKorName = useMemo(() => {
-    return LIST_TYPE_KOR.find((t) => t.kode === header.TypeKor)?.nama ?? "";
-  }, [header.TypeKor]);
-
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
 
-      {/* Header atas */}
+      {/* AppBar */}
       <View style={styles.appBar}>
-        <TouchableOpacity style={styles.appBarBtn} onPress={() => navigation.goBack()} disabled={saving || loadingStok}>
+        <TouchableOpacity
+          style={[styles.appBarBtn, (saving || loading) && { opacity: 0.6 }]}
+          onPress={() => navigation.goBack()}
+          disabled={saving || loading}
+        >
           <Text style={styles.appBarBtnText}>Batal</Text>
         </TouchableOpacity>
 
-        <Text style={styles.appBarTitle}>Input Koreksi Stok</Text>
+        <View style={{ flex: 1 }} />
 
         <TouchableOpacity
-          style={[styles.saveBtn, (saving || loadingStok) && { opacity: 0.6 }]}
+          style={[styles.saveBtn, (saving || loading) && { opacity: 0.6 }]}
           onPress={saveData}
-          disabled={saving || loadingStok}
+          disabled={saving || loading}
         >
-          <Text style={styles.saveBtnText}>{saving ? "..." : "Simpan"}</Text>
+          <Text style={styles.saveBtnText}>{saving ? "Menyimpan..." : "Simpan"}</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Header form tampil di awal */}
+      {/* Header Form */}
       {!headerCollapsed && (
         <View style={styles.headerCard}>
           <View style={styles.formRow}>
@@ -487,42 +572,55 @@ export default function FormKoreksiStok({ navigation }: any) {
             <Text style={styles.label}>Tipe Koreksi</Text>
             <TouchableOpacity onPress={() => setOpenType(true)} activeOpacity={0.85}>
               <View pointerEvents="none">
-              <TextInput
-                style={styles.input}
-                value={typeKorName}
-                placeholder="Pilih Tipe Koreksi"
-                placeholderTextColor="#9AA0A6"
-                editable={false}
-              />
+                <TextInput style={styles.input} value={typeKorName} placeholder="Pilih Tipe Koreksi" placeholderTextColor="#9AA0A6" editable={false} />
               </View>
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={[styles.primaryBtn, (saving || loadingStok) && { opacity: 0.6 }]} onPress={loadAllStockFromGudang} disabled={saving || loadingStok}>
-            {loadingStok ? (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <ActivityIndicator color="#fff" />
-                <Text style={styles.primaryBtnText}>Mengambil stok...</Text>
-              </View>
-            ) : (
-              <Text style={styles.primaryBtnText}>Ambil Semua Stok Gudang</Text>
-            )}
-          </TouchableOpacity>
+          <View style={{ marginTop: 10 }}>
+            <Text style={styles.label}>Keterangan</Text>
+            <TextInput
+              style={[styles.input, { textAlign: "left" }]}
+              value={header.Keterangan}
+              placeholder="(opsional)"
+              placeholderTextColor="#9AA0A6"
+              onChangeText={(v) => setHeader((p) => ({ ...p, Keterangan: v }))}
+            />
+          </View>
+
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+            <TouchableOpacity style={[styles.primaryBtn, { flex: 1 }, (saving || loading) && { opacity: 0.6 }]} onPress={loadAllStockFromGudang} disabled={saving || loading}>
+              {loading ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <ActivityIndicator color="#fff" />
+                  <Text style={styles.primaryBtnText}>Mengambil stok...</Text>
+                </View>
+              ) : (
+                <Text style={styles.primaryBtnText}>Ambil Semua Stok Gudang</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.secondaryBtn, { width: 120 }]} onPress={addRow} disabled={saving || loading}>
+              <Text style={styles.secondaryBtnText}>Tambah</Text>
+            </TouchableOpacity>
+          </View>
 
           {loadingLookup && (
-            <Text style={{ marginTop: 10, color: MUTED, fontWeight: "700", fontSize: 12 }}>Memuat lookup gudang & tipe...</Text>
+            <Text style={{ marginTop: 10, color: MUTED, fontWeight: "700", fontSize: 12 }}>
+              Memuat lookup gudang...
+            </Text>
           )}
         </View>
       )}
 
-      {/* Toolbar Search */}
+      {/* Toolbar */}
       <View style={styles.toolbar}>
         <View style={styles.searchWrap}>
           <TextInput
             style={styles.searchInput}
             value={search}
             onChangeText={setSearch}
-            placeholder="Cari SKU / Nama Barang"
+            placeholder="Cari Nama Barang"
             placeholderTextColor="#9AA0A6"
             returnKeyType="search"
           />
@@ -535,13 +633,13 @@ export default function FormKoreksiStok({ navigation }: any) {
         </View>
 
         <TouchableOpacity style={styles.headerToggle} onPress={() => setHeaderCollapsed((prev: boolean) => !prev)}>
-          <Text style={styles.headerToggleText}>{headerCollapsed ? "Tampilkan Filter ▲" : "Sembunyikan Filter ▼"}</Text>
+          <Text style={styles.headerToggleText}>{headerCollapsed ? "Tampilkan Filter ▼" : "Sembunyikan Filter ▲"}</Text>
         </TouchableOpacity>
       </View>
 
       <FlatList
         data={filteredDetails}
-        keyExtractor={(item, idx) => `${item.SKU}-${idx}`}
+        keyExtractor={(item, idx) => `${item.SKU || "row"}-${idx}`}
         renderItem={renderItem}
         contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 10, paddingBottom: 90 }}
         removeClippedSubviews
@@ -550,9 +648,7 @@ export default function FormKoreksiStok({ navigation }: any) {
         windowSize={10}
         updateCellsBatchingPeriod={50}
         keyboardShouldPersistTaps="handled"
-        ListEmptyComponent={
-          <Text style={{ textAlign: "center", marginTop: 24, color: MUTED }}>{loadingStok ? "Memuat..." : "Data kosong. Ambil semua stok dari gudang."}</Text>
-        }
+        ListEmptyComponent={<Text style={{ textAlign: "center", marginTop: 24, color: MUTED }}>{loading ? "Memuat..." : "Tekan Ambil Semua Stok Gudang"}</Text>}
       />
 
       {/* Bottom dock */}
@@ -568,21 +664,15 @@ export default function FormKoreksiStok({ navigation }: any) {
         items={listGudang}
         getKey={(it) => it.Kode}
         getLabel={(it) => `${it.Kode} — ${it.Nama}`}
-        onSelect={(g) => {
-          setHeader((p) => ({
-            ...p,
-            GudangKode: g.Kode,
-            GudangNama: g.Nama,
-          }));
-        }}
+        onSelect={(g) => setHeader((p) => ({ ...p, GudangKode: g.Kode, GudangNama: g.Nama }))}
         onClose={() => setOpenGudang(false)}
       />
 
       <SelectModal<TypeKorLookup>
         visible={openType}
         title="Pilih Tipe Koreksi"
-        items={listTypeKor}
-        getKey={(it, idx) => String(it.kode ?? idx)}
+        items={LIST_TYPE_KOR}
+        getKey={(it) => String(it.kode)}
         getLabel={typeLabel}
         onSelect={(t) => setHeader((p) => ({ ...p, TypeKor: Number(t.kode) }))}
         onClose={() => setOpenType(false)}
@@ -594,7 +684,6 @@ export default function FormKoreksiStok({ navigation }: any) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: BG },
 
-  // AppBar minimal
   appBar: {
     backgroundColor: PRIMARY,
     paddingTop: Platform.OS === "ios" ? 44 : 12,
@@ -603,33 +692,34 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  appBarTitle: {
-    flex: 1,
-    textAlign: "center",
+  appBarBtn: {
+    minWidth: 90,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  appBarBtnText: {
     color: "white",
     fontWeight: "900",
-    fontSize: 16,
   },
-  appBarBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.15)",
+  saveBtn: {
+    minWidth: 110,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: INDIGO,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  appBarBtnText: { color: "white", fontWeight: "900" },
+  saveBtnText: {
+    color: "white",
+    fontWeight: "900",
+  },
 
-  saveBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: INDIGO },
-  saveBtnText: { color: "white", fontWeight: "900" },
-
-  // Header form
-  headerCard: {
-    margin: 12,
-    backgroundColor: CARD,
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
+  headerCard: { margin: 12, backgroundColor: CARD, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: BORDER },
   formRow: { flexDirection: "row", gap: 10 },
   label: { fontWeight: "800", color: "#111827", marginTop: 6, marginBottom: 6, textAlign: "center" },
   input: {
@@ -643,17 +733,23 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "center",
   },
-  primaryBtn: {
-    marginTop: 12,
+  inputMini: {
+    borderWidth: 1,
+    borderColor: BORDER,
     borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: PRIMARY,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: "#fff",
+    color: "#111827",
+    fontWeight: "900",
   },
+
+  primaryBtn: { borderRadius: 12, paddingVertical: 12, alignItems: "center", justifyContent: "center", backgroundColor: PRIMARY },
   primaryBtnText: { color: "white", fontWeight: "900" },
 
-  // Toolbar search
+  secondaryBtn: { borderRadius: 12, paddingVertical: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#F3F4F6", borderWidth: 1, borderColor: BORDER },
+  secondaryBtnText: { color: PRIMARY, fontWeight: "900" },
+
   toolbar: {
     marginHorizontal: 12,
     marginTop: 10,
@@ -678,33 +774,20 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     paddingRight: 26,
   },
-  clearBtn: {
-    position: "absolute",
-    right: 10,
-    top: "50%",
-    transform: [{ translateY: -10 }],
-  },
+  clearBtn: { position: "absolute", right: 10, top: "50%", transform: [{ translateY: -10 }] },
   clearText: { fontSize: 18, fontWeight: "900", color: MUTED },
-
   headerToggle: { paddingHorizontal: 8, paddingVertical: 8 },
   headerToggleText: { color: PRIMARY, fontWeight: "900" },
 
-  // Row card
-  rowCard: {
-    backgroundColor: CARD,
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
+  rowCard: { backgroundColor: CARD, borderRadius: 16, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: BORDER },
   rowHeader: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  deleteBtn: { paddingHorizontal: 6, paddingVertical: 2 },
+  deleteText: { fontSize: 16 },
 
   skuText: { color: PRIMARY, fontWeight: "900" },
   namaText: { marginTop: 2, fontWeight: "900", color: "#111827" },
   smallMeta: { marginTop: 6, color: MUTED, fontWeight: "800", fontSize: 12 },
   smallStrong: { color: "#111827", fontWeight: "900" },
-  sizeStrong: { color: "#111827", fontWeight: "900" },
 
   gridRow: { flexDirection: "row", gap: 10, marginTop: 12, alignItems: "flex-start" },
   gridCell: { flex: 1 },
@@ -721,25 +804,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     overflow: "hidden",
   },
-  adjBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F3F4F6",
-  },
+  adjBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center", backgroundColor: "#F3F4F6" },
   adjText: { fontSize: 18, fontWeight: "900", color: PRIMARY },
-  fisikInput: {
-    flex: 1,
-    paddingVertical: 8,
-    textAlign: "center",
-    fontWeight: "900",
-    color: "#111827",
-  },
+  fisikInput: { flex: 1, paddingVertical: 8, textAlign: "center", fontWeight: "900", color: "#111827" },
 
   qtyInline: { marginTop: 10, fontWeight: "900" },
 
-  // Bottom dock
   bottomDock: {
     position: "absolute",
     left: 12,
@@ -759,21 +829,8 @@ const styles = StyleSheet.create({
   bottomLabel: { color: MUTED, fontWeight: "900", fontSize: 12 },
   bottomTotal: { color: PRIMARY, fontWeight: "900", fontSize: 16 },
 
-  // Modal
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
-    justifyContent: "center",
-    padding: 16,
-  },
-  modalCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
-    overflow: "hidden",
-    maxHeight: "75%",
-  },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "center", padding: 16 },
+  modalCard: { backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: BORDER, overflow: "hidden", maxHeight: "75%" },
   modalHeader: {
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -785,12 +842,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: { fontWeight: "900", color: "#111827" },
   modalClose: { fontSize: 22, fontWeight: "900", color: MUTED },
-  modalItem: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
-  },
+  modalItem: { paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
   modalItemText: { color: "#111827", fontWeight: "800" },
   modalEmpty: { padding: 16, textAlign: "center", color: MUTED, fontWeight: "700" },
 });
