@@ -1,51 +1,64 @@
-import React from 'react';
-import { useColorScheme, StatusBar } from 'react-native'; // Tambahkan StatusBar
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import React from "react";
+import { StatusBar } from "react-native";
+import { NavigationContainer } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import LoginScreen from './src/LoginScreen';
-import HomeScreen from './src/HomeScreen';
-import RealisasiProduksiScreen from './src/RealisasiProduksiScreen';
+import LoginScreen from "./src/LoginScreen";
+import HomeScreen from "./src/HomeScreen";
+import RealisasiProduksiScreen from "./src/RealisasiProduksiScreen";
+import KoreksiStokViewScreen from "./src/KoreksiStokViewScreen";
+import FormKoreksiStokScreen from "./src/FormKoreksiStokScreen";
 
-const Stack = createNativeStackNavigator();
+export type RootStackParamList = {
+  Login: undefined;
+  Home: undefined;
+  RealisasiProduksi: undefined;
+  KoreksiStokView: undefined;
+  FormKoreksiStok: undefined;
+};
 
-function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
+export default function App(): React.JSX.Element {
   return (
     <SafeAreaProvider>
-      {/* Menyesuaikan warna bar status baterai/jam di atas HP */}
-      <StatusBar 
-        backgroundColor="#3F51B5" 
-        barStyle="light-content" 
-      />
-      
+      <StatusBar backgroundColor="#3F51B5" barStyle="light-content" />
+
       <NavigationContainer>
-        <Stack.Navigator 
+        <Stack.Navigator
           initialRouteName="Login"
           screenOptions={{
-            headerShown: false // Sembunyikan header global karena kita pakai header kustom
+            headerShown: false,
           }}
         >
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="Home" component={HomeScreen} />
+
           <Stack.Screen
-            name="Login"
-            component={LoginScreen}
+            name="RealisasiProduksi"
+            component={RealisasiProduksiScreen}
           />
 
           <Stack.Screen
-            name="Home"
-            component={HomeScreen}
+            name="KoreksiStokView"
+            component={KoreksiStokViewScreen}
+            options={{
+              headerShown: true,
+              title: "Koreksi Stok",
+            }}
           />
-          <Stack.Screen 
-            name="RealisasiProduksi" 
-            component={RealisasiProduksiScreen} 
-            options={{ headerShown: false }}
+
+          <Stack.Screen
+            name="FormKoreksiStok"
+            component={FormKoreksiStokScreen}
+            options={{
+              headerShown: true,
+              title: "Input Koreksi Stok",
+            }}
           />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
   );
 }
-
-export default App;
