@@ -185,7 +185,7 @@ function StockSearchModal(props: {
       <View style={styles.modalBackdrop}>
         <View style={styles.modalCard}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Cari Stok ...</Text>
+            <Text style={styles.modalTitle}>Pencarian Stok</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Text style={styles.modalClose}>×</Text>
             </TouchableOpacity>
@@ -196,7 +196,7 @@ function StockSearchModal(props: {
               style={styles.searchInput}
               value={q}
               onChangeText={setQ}
-              placeholder="Cari SKU / Nama..."
+              placeholder="Cari SKU / Nama"
               placeholderTextColor="#9AA0A6"
               returnKeyType="search"
               onSubmitEditing={fetchStock}
