@@ -254,7 +254,7 @@ export default function KoreksiStokView({ navigation }: any) {
           <View style={styles.quickRow}>
             <TouchableOpacity
               style={styles.quickChip}
-              onPress={() => applyQuickRange(0)}
+              onPress={() => applyQuickRange(-1)}
               disabled={loading}
             >
               <Text style={styles.quickChipText}>Hari ini</Text>
