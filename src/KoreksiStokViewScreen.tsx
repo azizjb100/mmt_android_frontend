@@ -7,29 +7,31 @@ import {
   TouchableOpacity,
   FlatList,
   Linking,
-  Alert,
 } from "react-native";
 import DatePicker from "react-native-date-picker";
 import api from "../src/api/api.services";
+import { toast } from "../components/toastComponent";
+import ConfirmDialog from "../components/confirmComponent";
 
 type DetailKoreksi = {
   Nomor: string;
   Kode: string;
-  Nama: string;
+  Nama_Bahan: string;
   Panjang: number;
   Lebar: number;
   Satuan: string;
   Stock: number;
   Fisik: number;
   Koreksi: number;
+  List_Barcode?: string | null;
 };
 
 type KoreksiStok = {
   Nomor: string;
   Tanggal: string;
   Gudang: string;
-  Tipe: string;
-  Nama_Tipe: string;
+  Tipe: number;
+  Nama: string | null;
   Keterangan: string;
   Detail: DetailKoreksi[];
 };
@@ -38,7 +40,6 @@ const API_KOREKSI_STOK = "/mmt/koreksi-stok";
 
 const toISODate = (d: Date) => d.toISOString().slice(0, 10);
 const fromISODate = (s: string) => {
-  // aman untuk "YYYY-MM-DD"
   const [y, m, d] = s.split("-").map(Number);
   return new Date(y, (m || 1) - 1, d || 1);
 };
@@ -49,11 +50,24 @@ const minusDaysISO = (baseISO: string, days: number) => {
   return toISODate(d);
 };
 
+const pickArray = (payload: any): any[] => {
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.data?.data)) return payload.data.data;
+  if (Array.isArray(payload)) return payload;
+  return [];
+};
+
+const typeName = (tipe?: number) => {
+  if (tipe === 100) return "Terima";
+  if (tipe === 200) return "Keluar";
+  if (tipe === 300) return "Sisa Produksi";
+  return String(tipe ?? "-");
+};
+
 export default function KoreksiStokView({ navigation }: any) {
   const [masterData, setMasterData] = useState<KoreksiStok[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // default: 30 hari terakhir
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
@@ -61,11 +75,13 @@ export default function KoreksiStokView({ navigation }: any) {
   });
   const [endDate, setEndDate] = useState(() => toISODate(new Date()));
 
-  // date picker state
   const [openPicker, setOpenPicker] = useState<null | "start" | "end">(null);
 
   const [selectedNomor, setSelectedNomor] = useState<string | null>(null);
   const [expandedNomor, setExpandedNomor] = useState<string | null>(null);
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   const selectedItem = useMemo(
     () => masterData.find((x) => x.Nomor === selectedNomor) || null,
@@ -77,11 +93,16 @@ export default function KoreksiStokView({ navigation }: any) {
     setSelectedNomor(null);
     setExpandedNomor(null);
     try {
-      const res = await api.get(API_KOREKSI_STOK, { params: { startDate, endDate } });
-      setMasterData(res.data.data || []);
-    } catch (e) {
+      const res = await api.get(API_KOREKSI_STOK, {
+        params: { startDate, endDate },
+      });
+
+      const rows = pickArray(res?.data);
+      setMasterData(rows as KoreksiStok[]);
+    } catch (e: any) {
       console.error(e);
-      Alert.alert("Error", "Gagal memuat data koreksi.");
+      toast.error("Error", "Gagal memuat data koreksi");
+      setMasterData([]);
     } finally {
       setLoading(false);
     }
@@ -96,34 +117,17 @@ export default function KoreksiStokView({ navigation }: any) {
 
   const handlePrintSlip = async () => {
     if (!selectedItem) return;
+
     const url = `https://103.94.238.252:8003/print/koreksi-stok/${selectedItem.Nomor}`;
     const can = await Linking.canOpenURL(url);
-    if (!can) return Alert.alert("Gagal", "Tidak bisa membuka URL print.");
+    if (!can) return toast.error("Gagal", "Tidak bisa membuka URL print.");
+
     Linking.openURL(url);
   };
 
   const handleDelete = () => {
     if (!selectedItem) return;
-
-    Alert.alert("Konfirmasi", `Yakin ingin menghapus koreksi ${selectedItem.Nomor}?`, [
-      { text: "Batal", style: "cancel" },
-      {
-        text: "Hapus",
-        style: "destructive",
-        onPress: async () => {
-          setLoading(true);
-          try {
-            await api.delete(`${API_KOREKSI_STOK}/${selectedItem.Nomor}`);
-            Alert.alert("Sukses", "Hapus data sukses.");
-            fetchData();
-          } catch (e: any) {
-            Alert.alert("Gagal", "Hapus data gagal: " + (e.response?.data?.message || "Server Error"));
-          } finally {
-            setLoading(false);
-          }
-        },
-      },
-    ]);
+    setConfirmOpen(true);
   };
 
   const applyQuickRange = (daysBack: number) => {
@@ -142,38 +146,63 @@ export default function KoreksiStokView({ navigation }: any) {
       <View style={[styles.card, isSelected && styles.cardSelected]}>
         <TouchableOpacity
           onPress={() => setSelectedNomor(item.Nomor)}
-          onLongPress={() => setExpandedNomor(isExpanded ? null : item.Nomor)}
+          onLongPress={() =>
+            setExpandedNomor(isExpanded ? null : item.Nomor)
+          }
+          activeOpacity={0.85}
         >
           <View style={styles.rowTop}>
             <Text style={styles.nomor}>{item.Nomor}</Text>
             <Text style={styles.tanggal}>{item.Tanggal}</Text>
           </View>
+
           <Text style={styles.meta}>Gudang: {item.Gudang}</Text>
-          <Text style={styles.meta}>Tipe: {item.Nama_Tipe}</Text>
+          <Text style={styles.meta}>Tipe: {typeName(item.Tipe)}</Text>
+
           <Text style={styles.keterangan} numberOfLines={2}>
-            Ket: {item.Keterangan}
+            Ket: {item.Keterangan || "-"}
           </Text>
-          <Text style={styles.expandHint}>Tekan lama untuk {isExpanded ? "tutup" : "lihat"} detail</Text>
+
+          <Text style={styles.expandHint}>
+            Tekan lama untuk {isExpanded ? "tutup" : "lihat"} detail
+          </Text>
         </TouchableOpacity>
 
         {isExpanded && (
           <View style={styles.detailBox}>
             <Text style={styles.detailTitle}>Rincian Koreksi Barang</Text>
-            {(item.Detail || []).map((d, idx) => (
-              <View key={`${d.Kode}-${idx}`} style={styles.detailRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.detailName}>
-                    {d.Kode} - {d.Nama}
-                  </Text>
-                  <Text style={styles.detailSmall}>
-                    Satuan: {d.Satuan} | Sistem: {d.Stock} | Fisik: {d.Fisik}
+
+            {(!item.Detail || item.Detail.length === 0) ? (
+              <Text style={styles.emptyDetail}>Tidak ada detail.</Text>
+            ) : (
+              (item.Detail || []).map((d, idx) => (
+                <View key={`${d.Kode}-${idx}`} style={styles.detailRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailName}>
+                      {d.Kode} - {d.Nama_Bahan}
+                    </Text>
+
+                    <Text style={styles.detailSmall}>
+                      Satuan: {d.Satuan} | Sistem: {d.Stock} | Fisik: {d.Fisik}
+                    </Text>
+
+                    <Text style={styles.detailSmall}>
+                      Ukuran: {Number(d.Panjang || 0)} x {Number(d.Lebar || 0)}{" "}
+                      | Barcode: {d.List_Barcode ?? "-"}
+                    </Text>
+                  </View>
+
+                  <Text
+                    style={[
+                      styles.badge,
+                      d.Koreksi < 0 ? styles.badgeRed : styles.badgeGreen,
+                    ]}
+                  >
+                    {d.Koreksi}
                   </Text>
                 </View>
-                <Text style={[styles.badge, d.Koreksi < 0 ? styles.badgeRed : styles.badgeGreen]}>
-                  {d.Koreksi}
-                </Text>
-              </View>
-            ))}
+              ))
+            )}
           </View>
         )}
       </View>
@@ -184,12 +213,20 @@ export default function KoreksiStokView({ navigation }: any) {
     <View style={styles.screen}>
       {/* Header actions */}
       <View style={styles.actions}>
-        <TouchableOpacity style={[styles.btn, styles.btnSuccess]} onPress={handleAdd} disabled={loading}>
-          <Text style={styles.btnText}>+ Koreksi Stok</Text>
+        <TouchableOpacity
+          style={[styles.btn, styles.btnSuccess, loading && styles.btnDisabled]}
+          onPress={handleAdd}
+          disabled={loading}
+        >
+          <Text style={styles.btnText}>Koreksi Stok</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.btn, styles.btnInfo, !selectedItem && styles.btnDisabled]}
+          style={[
+            styles.btn,
+            styles.btnInfo,
+            (!selectedItem || loading) && styles.btnDisabled,
+          ]}
           onPress={handlePrintSlip}
           disabled={!selectedItem || loading}
         >
@@ -197,7 +234,11 @@ export default function KoreksiStokView({ navigation }: any) {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.btn, styles.btnDanger, !selectedItem && styles.btnDisabled]}
+          style={[
+            styles.btn,
+            styles.btnDanger,
+            (!selectedItem || loading) && styles.btnDisabled,
+          ]}
           onPress={handleDelete}
           disabled={!selectedItem || loading}
         >
@@ -211,36 +252,71 @@ export default function KoreksiStokView({ navigation }: any) {
           <Text style={styles.filterTitle}>Periode</Text>
 
           <View style={styles.quickRow}>
-            <TouchableOpacity style={styles.quickChip} onPress={() => applyQuickRange(0)} disabled={loading}>
+            <TouchableOpacity
+              style={styles.quickChip}
+              onPress={() => applyQuickRange(0)}
+              disabled={loading}
+            >
               <Text style={styles.quickChipText}>Hari ini</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.quickChip} onPress={() => applyQuickRange(7)} disabled={loading}>
+
+            <TouchableOpacity
+              style={styles.quickChip}
+              onPress={() => applyQuickRange(7)}
+              disabled={loading}
+            >
               <Text style={styles.quickChipText}>-7H</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.quickChip} onPress={() => applyQuickRange(30)} disabled={loading}>
+
+            <TouchableOpacity
+              style={styles.quickChip}
+              onPress={() => applyQuickRange(30)}
+              disabled={loading}
+            >
               <Text style={styles.quickChipText}>-30H</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.clearMini} onPress={resetDefault} disabled={loading} hitSlop={10}>
+            <TouchableOpacity
+              style={styles.clearMini}
+              onPress={resetDefault}
+              disabled={loading}
+              hitSlop={10}
+            >
               <Text style={styles.clearMiniText}>↺</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         <View style={styles.dateRow}>
-          <TouchableOpacity style={styles.dateField} onPress={() => setOpenPicker("start")} activeOpacity={0.8}>
-            {/* <Text style={styles.dateLabel}>Mulai</Text> */}
+          <TouchableOpacity
+            style={styles.dateField}
+            onPress={() => setOpenPicker("start")}
+            activeOpacity={0.8}
+            disabled={loading}
+          >
             <Text style={styles.dateValue}>{startDate}</Text>
           </TouchableOpacity>
 
           <Text style={styles.sep}>s/d</Text>
 
-          <TouchableOpacity style={styles.dateField} onPress={() => setOpenPicker("end")} activeOpacity={0.8}>
-            {/* <Text style={styles.dateLabel}>Sampai</Text> */}
+          <TouchableOpacity
+            style={styles.dateField}
+            onPress={() => setOpenPicker("end")}
+            activeOpacity={0.8}
+            disabled={loading}
+          >
             <Text style={styles.dateValue}>{endDate}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={fetchData} disabled={loading}>
+          <TouchableOpacity
+            style={[
+              styles.btn,
+              styles.btnPrimary,
+              loading && styles.btnDisabled,
+            ]}
+            onPress={fetchData}
+            disabled={loading}
+          >
             <Text style={styles.btnText}>{loading ? "Loading..." : "Refresh"}</Text>
           </TouchableOpacity>
         </View>
@@ -254,16 +330,17 @@ export default function KoreksiStokView({ navigation }: any) {
         date={fromISODate(openPicker === "start" ? startDate : endDate)}
         onConfirm={(d) => {
           const iso = toISODate(d);
+          const mode = openPicker;
           setOpenPicker(null);
 
-          if (openPicker === "start") {
+          if (mode === "start") {
             if (iso > endDate) {
               setStartDate(endDate);
               setEndDate(iso);
             } else {
               setStartDate(iso);
             }
-          } else {
+          } else if (mode === "end") {
             if (iso < startDate) {
               setEndDate(startDate);
               setStartDate(iso);
@@ -286,6 +363,45 @@ export default function KoreksiStokView({ navigation }: any) {
           </Text>
         }
       />
+
+      {/* Confirm dialog (hapus) */}
+      <ConfirmDialog
+        visible={confirmOpen}
+        variant="danger"
+        title="Hapus Koreksi Stok"
+        message="Yakin ingin menghapus dokumen ini?"
+        detail={
+          selectedItem
+            ? `${selectedItem.Nomor}\n${selectedItem.Gudang}\n${selectedItem.Tanggal}`
+            : ""
+        }
+        cancelText="Batal"
+        confirmText="Hapus"
+        loading={confirmLoading}
+        onCancel={() => {
+          if (confirmLoading) return;
+          setConfirmOpen(false);
+        }}
+        onConfirm={async () => {
+          if (!selectedItem) return;
+
+          setConfirmLoading(true);
+          try {
+            await api.delete(`${API_KOREKSI_STOK}/${selectedItem.Nomor}`);
+            toast.success("Sukses", "Hapus data sukses.");
+            setConfirmOpen(false);
+            await fetchData();
+          } catch (e: any) {
+            toast.error(
+              "Gagal",
+              "Hapus data gagal: " +
+                (e?.response?.data?.message || e?.message || "Server Error")
+            );
+          } finally {
+            setConfirmLoading(false);
+          }
+        }}
+      />
     </View>
   );
 }
@@ -295,7 +411,7 @@ const styles = StyleSheet.create({
 
   actions: { flexDirection: "row", gap: 8, padding: 12 },
   btn: { paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10 },
-  btnText: { color: "white", fontWeight: "700" },
+  btnText: { color: "white", fontWeight: "700"},
   btnDisabled: { opacity: 0.4 },
   btnPrimary: { backgroundColor: "#3F51B5" },
   btnSuccess: { backgroundColor: "#2E7D32" },
@@ -310,7 +426,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#eee",
   },
-  filterHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  filterHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   filterTitle: { fontWeight: "900", color: "#111827" },
 
   quickRow: { flexDirection: "row", alignItems: "center", gap: 8 },
@@ -335,7 +455,13 @@ const styles = StyleSheet.create({
   },
   clearMiniText: { fontWeight: "900", color: "#1A237E" },
 
-  dateRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" },
+  dateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 10,
+    flexWrap: "wrap",
+  },
   dateField: {
     flexGrow: 1,
     minWidth: 140,
@@ -346,8 +472,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     backgroundColor: "#fff",
   },
-  dateLabel: { fontSize: 11, fontWeight: "800", color: "#6B7280" },
-  dateValue: { marginTop: 2, fontWeight: "900", color: "#111827", textAlign:'center' },
+  dateValue: {
+    marginTop: 2,
+    fontWeight: "900",
+    color: "#111827",
+    textAlign: "center",
+  },
   sep: { color: "#9CA3AF", fontWeight: "900" },
 
   card: {
@@ -366,11 +496,24 @@ const styles = StyleSheet.create({
   keterangan: { color: "#333", marginTop: 6 },
   expandHint: { marginTop: 6, color: "#888", fontSize: 12 },
 
-  detailBox: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#eee" },
+  detailBox: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+  },
   detailTitle: { fontWeight: "800", marginBottom: 8 },
-  detailRow: { flexDirection: "row", alignItems: "center", paddingVertical: 6, gap: 10 },
+  emptyDetail: { color: "#6B7280", fontWeight: "700" },
+
+  detailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 6,
+    gap: 10,
+  },
   detailName: { fontWeight: "700" },
   detailSmall: { color: "#666", fontSize: 12, marginTop: 2 },
+
   badge: {
     paddingHorizontal: 10,
     paddingVertical: 6,

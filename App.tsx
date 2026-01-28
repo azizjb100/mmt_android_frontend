@@ -9,6 +9,7 @@ import HomeScreen from "./src/HomeScreen";
 import RealisasiProduksiScreen from "./src/RealisasiProduksiScreen";
 import KoreksiStokViewScreen from "./src/KoreksiStokViewScreen";
 import FormKoreksiStokScreen from "./src/FormKoreksiStokScreen";
+import FlashMessage from "react-native-flash-message";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -24,7 +25,6 @@ export default function App(): React.JSX.Element {
   return (
     <SafeAreaProvider>
       <StatusBar backgroundColor="#3F51B5" barStyle="light-content" />
-
       <NavigationContainer>
         <Stack.Navigator
           initialRouteName="Login"
@@ -59,6 +59,7 @@ export default function App(): React.JSX.Element {
           />
         </Stack.Navigator>
       </NavigationContainer>
+      <FlashMessage position="top" />
     </SafeAreaProvider>
   );
 }

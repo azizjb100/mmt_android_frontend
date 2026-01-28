@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   TextInput,
   FlatList,
-  Alert,
+  // Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -18,6 +18,8 @@ import {
 } from "react-native";
 import api from "../src/api/api.services";
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { toast } from "../components/toastComponent";
+import ConfirmDialog from "../components/confirmComponent";
 
 type DetailItem = {
   SKU: string;
@@ -117,6 +119,21 @@ export default function FormKoreksiStok({ navigation }: any) {
   const [loading, setLoading] = useState(false);
   const [headerCollapsed, setHeaderCollapsed] = useState<boolean>(false);
 
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<DetailItem | null>(null);
+
+  const openDeleteConfirm = (item: DetailItem) => {
+    setPendingDelete(item);
+    setConfirmOpen(true);
+  };
+
+  const closeDeleteConfirm = () => {
+    if (confirmLoading) return;
+    setConfirmOpen(false);
+    setPendingDelete(null);
+  };
+
   const LIST_TYPE_KOR: TypeKorLookup[] = useMemo(
     () => [
       { nama: "Terima", kode: 100 },
@@ -167,17 +184,17 @@ export default function FormKoreksiStok({ navigation }: any) {
     ]);
   }, []);
 
-  const removeRow = useCallback((index: number) => {
+  const removeRowBySku = useCallback((sku: string) => {
     setDetails((prev) => {
-      const copy = [...prev];
-      const removed = copy[index];
-      copy.splice(index, 1);
+      const idx = prev.findIndex((x) => x.SKU === sku);
+      if (idx < 0) return prev;
 
-      if (removed?.SKU) {
-        draftFisikRef.current.delete(removed.SKU);
-        draftPanjangRef.current.delete(removed.SKU);
-        draftLebarRef.current.delete(removed.SKU);
-      }
+      const copy = [...prev];
+      copy.splice(idx, 1);
+
+      draftFisikRef.current.delete(sku);
+      draftPanjangRef.current.delete(sku);
+      draftLebarRef.current.delete(sku);
 
       return copy.length
         ? copy
@@ -198,6 +215,36 @@ export default function FormKoreksiStok({ navigation }: any) {
           ];
     });
   }, []);
+
+  // const confirmDeleteRow = useCallback(
+  //   (item: DetailItem) => {
+  //     const sku = String(item?.SKU ?? "").trim();
+  //     const nama = String(item?.NamaBarang ?? "").trim();
+
+  //     if (!sku) {
+  //       toast.warn("Tidak bisa hapus", "SKU kosong.");
+  //       return;
+  //     }
+
+  //     Alert.alert(
+  //       "Konfirmasi Hapus",
+  //       `Yakin ingin menghapus item ini?\n\n${sku}${nama ? `\n${nama}` : ""}`,
+  //       [
+  //         { text: "Batal", style: "cancel" },
+  //         {
+  //           text: "Hapus",
+  //           style: "destructive",
+  //           onPress: () => {
+  //             removeRowBySku(sku);
+  //             toast.success("Dihapus", `${sku} ${nama}`.trim());
+  //           },
+  //         },
+  //       ],
+  //       { cancelable: true }
+  //     );
+  //   },
+  //   [removeRowBySku]
+  // );
 
   const calculateRowByIndex = useCallback((index: number, patch?: Partial<Pick<DetailItem, "Fisik" | "System" | "Harga">>) => {
     setDetails((prev) => {
@@ -270,7 +317,7 @@ export default function FormKoreksiStok({ navigation }: any) {
       }
     } catch (err: any) {
       console.log("Gagal load lookup gudang:", err?.response?.data || err?.message || err);
-      Alert.alert("Error", String(err?.response?.data?.message || err?.message || "Gagal load lookup gudang"));
+      toast.error("Error", String(err?.response?.data?.message || err?.message || "Gagal load lookup gudang"));
     } finally {
       setLoadingLookup(false);
     }
@@ -325,7 +372,7 @@ export default function FormKoreksiStok({ navigation }: any) {
   );
 
   const loadAllStockFromGudang = useCallback(async () => {
-    if (!header.GudangKode) return Alert.alert("Validasi", "Pilih gudang terlebih dahulu");
+    if (!header.GudangKode) return toast.warn("Validasi", "Pilih gudang terlebih dahulu");
 
     setLoading(true);
     try {
@@ -339,7 +386,7 @@ export default function FormKoreksiStok({ navigation }: any) {
         draftFisikRef.current.clear();
         draftPanjangRef.current.clear();
         draftLebarRef.current.clear();
-        Alert.alert("Info", "Tidak ada data stok ditemukan.");
+        toast.warn("Info", "Tidak ada data stok ditemukan")
         return;
       }
 
@@ -370,7 +417,7 @@ export default function FormKoreksiStok({ navigation }: any) {
       setDetails(mapped);
       setHeaderCollapsed(true);
     } catch (e: any) {
-      Alert.alert("Gagal", "Gagal memuat stok: " + String(e?.response?.data?.message || e?.message || "Unknown"));
+      toast.error("Gagal", 'Gagal memuat stok'+ String(e?.response?.data?.message || e?.message || "Unknown"));
     } finally {
       setLoading(false);
     }
@@ -378,8 +425,8 @@ export default function FormKoreksiStok({ navigation }: any) {
 
   const saveData = useCallback(async () => {
     const validDetails = details.filter((d) => d.SKU && d.SKU.trim() !== "");
-    if (!header.GudangKode || !header.TypeKor) return Alert.alert("Validasi", "Header harus lengkap!");
-    if (validDetails.length === 0) return Alert.alert("Validasi", "Detail barang kosong!");
+    if (!header.GudangKode || !header.TypeKor) return toast.warn("Validasi", "Header harus lengkap!");
+    if (validDetails.length === 0) return toast.warn("Validasi", "Detail barang kosong!");
 
     setSaving(true);
     try {
@@ -395,10 +442,10 @@ export default function FormKoreksiStok({ navigation }: any) {
 
       await api.post("/mmt/koreksi-stok", payload);
 
-      Alert.alert("Sukses", "Simpan Berhasil!");
+      toast.success("Sukses", "Simpan Berhasil")
       navigation.goBack();
     } catch (e: any) {
-      Alert.alert("Gagal", "Gagal Simpan: " + String(e?.response?.data?.message || e?.message || "Unknown"));
+      toast.error("Gagal", 'Gagal Simpan: ' + String(e?.response?.data?.message || e?.message || "Unknown"));
     } finally {
       setSaving(false);
     }
@@ -431,7 +478,7 @@ export default function FormKoreksiStok({ navigation }: any) {
             </Text>
           </View>
 
-          <TouchableOpacity onPress={() => removeRow(index)} style={styles.deleteBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <TouchableOpacity onPress={() => openDeleteConfirm(item)} style={styles.deleteBtn}>
             <MaterialIcons name="restore-from-trash" size={22} color={DANGER} />
           </TouchableOpacity>
         </View>
@@ -666,6 +713,35 @@ export default function FormKoreksiStok({ navigation }: any) {
         getLabel={(it) => `${it.Kode} — ${it.Nama}`}
         onSelect={(g) => setHeader((p) => ({ ...p, GudangKode: g.Kode, GudangNama: g.Nama }))}
         onClose={() => setOpenGudang(false)}
+      />
+
+      <ConfirmDialog
+        visible={confirmOpen}
+        variant="danger"
+        title="Hapus Item"
+        message="Yakin ingin menghapus item ini?"
+        detail={`${pendingDelete?.SKU || "—"}\n${pendingDelete?.NamaBarang || ""}`}
+        cancelText="Batal"
+        confirmText="Hapus"
+        loading={confirmLoading}
+        onCancel={closeDeleteConfirm}
+        onConfirm={() => {
+          const sku = String(pendingDelete?.SKU ?? "").trim();
+          if (!sku) {
+            toast?.warn?.("Tidak bisa hapus", "SKU kosong.");
+            closeDeleteConfirm();
+            return;
+          }
+
+          setConfirmLoading(true);
+          try {
+            removeRowBySku(sku);
+            toast?.success?.("Berhasil", "Item berhasil dihapus");
+            closeDeleteConfirm();
+          } finally {
+            setConfirmLoading(false);
+          }
+        }}
       />
 
       <SelectModal<TypeKorLookup>
