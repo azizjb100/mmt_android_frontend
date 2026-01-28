@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const apiClient = axios.create({
-    baseURL: 'http://103.94.238.252:8003/api', 
+    baseURL: 'http://103.94.238.252:8003/api',
     timeout: 10000,
     headers: {
         'Content-Type': 'application/json',
@@ -9,7 +9,6 @@ const apiClient = axios.create({
 });
 
 export const authService = {
-    // Pastikan endpoint sesuai dengan backend (/auth/login atau /login)
     login: async (username, password) => {
         try {
             const response = await apiClient.post('/auth/login', {

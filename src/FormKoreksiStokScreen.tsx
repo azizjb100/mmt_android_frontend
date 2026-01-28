@@ -9,19 +9,21 @@ import {
   TouchableOpacity,
   TextInput,
   FlatList,
-  // Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   StatusBar,
   Modal,
 } from "react-native";
+import MaterialIcons from "react-native-vector-icons/MaterialIcons";
+import QRCode from "react-native-qrcode-svg";
+
 import api from "../src/api/api.services";
-import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { toast } from "../components/toastComponent";
 import ConfirmDialog from "../components/confirmComponent";
 
 type DetailItem = {
+  __id: string;
   SKU: string;
   NamaBarang: string;
   Satuan: string;
@@ -47,6 +49,17 @@ type MasterHeader = {
 type GudangLookup = { Kode: string; Nama: string };
 type TypeKorLookup = { kode: number; nama: string };
 
+// Bentuk item stok dari endpoint /mmt/koreksi-stok/stok (yang kamu pakai di loadAllStock)
+type StockApiItem = {
+  Kode?: string;
+  Nama?: string;
+  Satuan?: string;
+  Panjang?: number | string;
+  Lebar?: number | string;
+  Stok?: number | string;
+  HRGBELI?: number | string;
+};
+
 const PRIMARY = "#3F51B5";
 const INDIGO = "#1A237E";
 const BG = "#F5F5F5";
@@ -55,6 +68,8 @@ const BORDER = "#E5E7EB";
 const MUTED = "#6B7280";
 const SUCCESS = "#16A34A";
 const DANGER = "#DC2626";
+
+const makeId = () => `row_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
 const num = (v: any) => {
   const n = Number(v);
@@ -114,29 +129,133 @@ function SelectModal<T>(props: {
   );
 }
 
-export default function FormKoreksiStok({ navigation }: any) {
+/**
+ * Modal Search Stok Gudang:
+ * - query ke /mmt/koreksi-stok/stok
+ * - params: gudangKode, tanggal, q
+ * - user pilih item -> dikembalikan lewat onPick
+ */
+function StockSearchModal(props: {
+  visible: boolean;
+  gudangKode: string;
+  tanggal: string;
+  initialQuery?: string;
+  onClose: () => void;
+  onPick: (item: StockApiItem) => void;
+}) {
+  const { visible, gudangKode, tanggal, initialQuery, onClose, onPick } = props;
+  const [q, setQ] = useState(initialQuery ?? "");
+  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState<StockApiItem[]>([]);
+
+  useEffect(() => {
+    if (!visible) return;
+    setQ(initialQuery ?? "");
+  }, [visible, initialQuery]);
+
+  const fetchStock = useCallback(async () => {
+    if (!gudangKode) {
+      toast.warn("Validasi", "Pilih gudang terlebih dahulu");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await api.get("/mmt/koreksi-stok/stok", {
+        params: { gudangKode, tanggal, q: (q || "").trim() },
+      });
+      const raw = pickArray(res?.data) as StockApiItem[];
+      setItems(raw || []);
+    } catch (e: any) {
+      toast.error("Gagal", String(e?.response?.data?.message || e?.message || "Gagal mencari stok"));
+    } finally {
+      setLoading(false);
+    }
+  }, [gudangKode, tanggal, q]);
+
+  useEffect(() => {
+    if (!visible) return;
+    fetchStock();
+  }, [visible]);
+
+  const labelSku = (x: StockApiItem) => String(x?.Kode ?? "").trim();
+  const labelNama = (x: StockApiItem) => String(x?.Nama ?? "").trim();
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Cari Stok ...</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={styles.modalClose}>×</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: BORDER }}>
+            <TextInput
+              style={styles.searchInput}
+              value={q}
+              onChangeText={setQ}
+              placeholder="Cari SKU / Nama..."
+              placeholderTextColor="#9AA0A6"
+              returnKeyType="search"
+              onSubmitEditing={fetchStock}
+            />
+            <TouchableOpacity style={[styles.secondaryBtn, { marginTop: 10 }]} onPress={fetchStock} disabled={loading}>
+              {loading ? <ActivityIndicator /> : <Text style={styles.secondaryBtnText}>Cari</Text>}
+            </TouchableOpacity>
+
+            <Text style={{ marginTop: 10, color: MUTED, fontWeight: "800", fontSize: 12 }}>
+              Gudang: <Text style={{ color: "#111827" }}>{gudangKode || "-"}</Text> • Tanggal:{" "}
+              <Text style={{ color: "#111827" }}>{tanggal || "-"}</Text>
+            </Text>
+          </View>
+
+          <FlatList
+            data={items}
+            keyExtractor={(it, idx) => `${String(it?.Kode ?? "item")}-${idx}`}
+            renderItem={({ item }) => {
+              const kode = labelSku(item);
+              const nama = labelNama(item);
+              const stok = num(item?.Stok);
+              return (
+                <TouchableOpacity
+                  style={styles.modalItem}
+                  onPress={() => {
+                    onPick(item);
+                    onClose();
+                  }}
+                >
+                  <Text style={styles.modalItemText}>{kode || "—"}</Text>
+                  <Text style={{ color: MUTED, fontWeight: "700", marginTop: 4 }} numberOfLines={2}>
+                    {nama || "—"}
+                  </Text>
+                  <Text style={{ marginTop: 6, color: "#111827", fontWeight: "900", fontSize: 12 }}>
+                    Stok: {stok}
+                  </Text>
+                </TouchableOpacity>
+              );
+            }}
+            ListEmptyComponent={
+              <Text style={styles.modalEmpty}>
+                {loading ? "Memuat..." : "Tidak ada data. Coba ganti kata kunci."}
+              </Text>
+            }
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+export default function FormKoreksiStokScreen({ navigation }: any) {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [headerCollapsed, setHeaderCollapsed] = useState<boolean>(false);
 
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmLoading, setConfirmLoading] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<DetailItem | null>(null);
-
-  const openDeleteConfirm = (item: DetailItem) => {
-    setPendingDelete(item);
-    setConfirmOpen(true);
-  };
-
-  const closeDeleteConfirm = () => {
-    if (confirmLoading) return;
-    setConfirmOpen(false);
-    setPendingDelete(null);
-  };
-
   const LIST_TYPE_KOR: TypeKorLookup[] = useMemo(
     () => [
-      { nama: "Terima", kode: 100 },
+      { nama: "Terima", kode: 100, },
       { nama: "Keluar", kode: 200 },
       { nama: "Sisa Produksi", kode: 300 },
     ],
@@ -146,7 +265,6 @@ export default function FormKoreksiStok({ navigation }: any) {
   const [loadingLookup, setLoadingLookup] = useState(false);
   const [listGudang, setListGudang] = useState<GudangLookup[]>([]);
   const [openGudang, setOpenGudang] = useState(false);
-
   const [openType, setOpenType] = useState(false);
 
   const [header, setHeader] = useState<MasterHeader>({
@@ -159,16 +277,39 @@ export default function FormKoreksiStok({ navigation }: any) {
   });
 
   const [details, setDetails] = useState<DetailItem[]>([]);
-  const [search, setSearch] = useState("");
+  const [searchKey, setSearchKey] = useState(""); // keyword search stok gudang (bukan filter lokal)
+  const [stockModalOpen, setStockModalOpen] = useState(false);
+  const [currentDetailIndex, setCurrentDetailIndex] = useState<number | null>(null);
 
+  const [barcodeOpen, setBarcodeOpen] = useState(false);
+
+  // draft input per rowId
   const draftFisikRef = useRef<Map<string, string>>(new Map());
   const draftPanjangRef = useRef<Map<string, string>>(new Map());
   const draftLebarRef = useRef<Map<string, string>>(new Map());
 
+  // --- delete confirm ---
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; sku: string; nama: string } | null>(null);
+
+  const openDeleteConfirm = (item: DetailItem) => {
+    setPendingDelete({ id: item.__id, sku: item.SKU, nama: item.NamaBarang });
+    setConfirmOpen(true);
+  };
+
+  const closeDeleteConfirm = () => {
+    if (confirmLoading) return;
+    setConfirmOpen(false);
+    setPendingDelete(null);
+  };
+
   const addRow = useCallback(() => {
+    const id = makeId();
     setDetails((prev) => [
       ...prev,
       {
+        __id: id,
         SKU: "",
         NamaBarang: "",
         Satuan: "",
@@ -184,103 +325,88 @@ export default function FormKoreksiStok({ navigation }: any) {
     ]);
   }, []);
 
-  const removeRowBySku = useCallback((sku: string) => {
+  // Vue: if (!isEdit) addRow() onMounted
+  useEffect(() => {
+    if (!details.length) addRow();
+  }, []);
+
+  const removeRowById = useCallback((id: string) => {
     setDetails((prev) => {
-      const idx = prev.findIndex((x) => x.SKU === sku);
+      const idx = prev.findIndex((x) => x.__id === id);
       if (idx < 0) return prev;
 
       const copy = [...prev];
+      const removed = copy[idx];
       copy.splice(idx, 1);
 
-      draftFisikRef.current.delete(sku);
-      draftPanjangRef.current.delete(sku);
-      draftLebarRef.current.delete(sku);
+      if (removed) {
+        draftFisikRef.current.delete(removed.__id);
+        draftPanjangRef.current.delete(removed.__id);
+        draftLebarRef.current.delete(removed.__id);
+      }
 
-      return copy.length
-        ? copy
-        : [
-            {
-              SKU: "",
-              NamaBarang: "",
-              Satuan: "",
-              Panjang: 0,
-              Lebar: 0,
-              Expired: null,
-              System: 0,
-              Fisik: 0,
-              Qty: 0,
-              Harga: 0,
-              Nilai: 0,
-            },
-          ];
-    });
-  }, []);
+      if (!copy.length) {
+        const nid = makeId();
+        return [
+          {
+            __id: nid,
+            SKU: "",
+            NamaBarang: "",
+            Satuan: "",
+            Panjang: 0,
+            Lebar: 0,
+            Expired: null,
+            System: 0,
+            Fisik: 0,
+            Qty: 0,
+            Harga: 0,
+            Nilai: 0,
+          },
+        ];
+      }
 
-  // const confirmDeleteRow = useCallback(
-  //   (item: DetailItem) => {
-  //     const sku = String(item?.SKU ?? "").trim();
-  //     const nama = String(item?.NamaBarang ?? "").trim();
-
-  //     if (!sku) {
-  //       toast.warn("Tidak bisa hapus", "SKU kosong.");
-  //       return;
-  //     }
-
-  //     Alert.alert(
-  //       "Konfirmasi Hapus",
-  //       `Yakin ingin menghapus item ini?\n\n${sku}${nama ? `\n${nama}` : ""}`,
-  //       [
-  //         { text: "Batal", style: "cancel" },
-  //         {
-  //           text: "Hapus",
-  //           style: "destructive",
-  //           onPress: () => {
-  //             removeRowBySku(sku);
-  //             toast.success("Dihapus", `${sku} ${nama}`.trim());
-  //           },
-  //         },
-  //       ],
-  //       { cancelable: true }
-  //     );
-  //   },
-  //   [removeRowBySku]
-  // );
-
-  const calculateRowByIndex = useCallback((index: number, patch?: Partial<Pick<DetailItem, "Fisik" | "System" | "Harga">>) => {
-    setDetails((prev) => {
-      const copy = [...prev];
-      const item = copy[index];
-      if (!item) return prev;
-
-      const next = { ...item, ...patch };
-
-      const fisik = num(next.Fisik);
-      const system = num(next.System);
-      const harga = num(next.Harga);
-
-      const qty = fisik - system;
-      const nilai = qty * harga;
-
-      copy[index] = {
-        ...next,
-        Fisik: fisik,
-        System: system,
-        Harga: harga,
-        Qty: fixNegZero(qty),
-        Nilai: fixNegZero(nilai),
-      };
       return copy;
     });
   }, []);
 
+  const calculateRowByIndex = useCallback(
+    (index: number, patch?: Partial<Pick<DetailItem, "Fisik" | "System" | "Harga">>) => {
+      setDetails((prev) => {
+        const copy = [...prev];
+        const item = copy[index];
+        if (!item) return prev;
+
+        const next = { ...item, ...patch };
+
+        const fisik = num(next.Fisik);
+        const system = num(next.System);
+        const harga = num(next.Harga);
+
+        const qty = fisik - system;
+        const nilai = qty * harga;
+
+        copy[index] = {
+          ...next,
+          Fisik: fisik,
+          System: system,
+          Harga: harga,
+          Qty: fixNegZero(qty),
+          Nilai: fixNegZero(nilai),
+        };
+        return copy;
+      });
+    },
+    []
+  );
+
   const commitUkuran = useCallback(
-    (sku: string, indexHint: number, field: "Panjang" | "Lebar", valueStr: string, opts?: { keepDraft?: boolean }) => {
+    (rowId: string, indexHint: number, field: "Panjang" | "Lebar", valueStr: string, opts?: { keepDraft?: boolean }) => {
       const trimmed = String(valueStr ?? "").trim();
       const val = trimmed === "" ? 0 : num(trimmed);
 
       setDetails((prev) => {
         const copy = [...prev];
-        const realIndex = copy[indexHint]?.SKU === sku ? indexHint : copy.findIndex((x) => x.SKU === sku);
+        const realIndex = copy[indexHint]?.__id === rowId ? indexHint : copy.findIndex((x) => x.__id === rowId);
         const idx = realIndex >= 0 ? realIndex : indexHint;
         const item = copy[idx];
         if (!item) return prev;
@@ -290,18 +416,50 @@ export default function FormKoreksiStok({ navigation }: any) {
       });
 
       if (!opts?.keepDraft) {
-        if (field === "Panjang") draftPanjangRef.current.delete(sku);
-        if (field === "Lebar") draftLebarRef.current.delete(sku);
+        if (field === "Panjang") draftPanjangRef.current.delete(rowId);
+        if (field === "Lebar") draftLebarRef.current.delete(rowId);
       }
     },
     []
   );
 
+  const commitFisik = useCallback(
+    (rowId: string, indexHint: number, valueStr: string, opts?: { keepDraft?: boolean }) => {
+      const trimmed = String(valueStr ?? "").trim();
+      const val = trimmed === "" ? 0 : num(trimmed);
+
+      const realIndex = (() => {
+        const direct = details[indexHint];
+        if (direct?.__id === rowId) return indexHint;
+        const idx = details.findIndex((x) => x.__id === rowId);
+        return idx >= 0 ? idx : indexHint;
+      })();
+
+      calculateRowByIndex(realIndex, { Fisik: val });
+
+      if (!opts?.keepDraft) draftFisikRef.current.delete(rowId);
+    },
+    [details, calculateRowByIndex]
+  );
+
+  const adjustFisik = useCallback(
+    (rowId: string, indexHint: number, currentFisik: number, delta: number) => {
+      const map = draftFisikRef.current;
+      const base = map.has(rowId) ? num(map.get(rowId)) : num(currentFisik);
+      const next = String(base + delta);
+      map.set(rowId, next);
+      commitFisik(rowId, indexHint, next, { keepDraft: true });
+    },
+    [commitFisik]
+  );
+
+  // --- lookup gudang ---
   const fetchLookups = useCallback(async () => {
     setLoadingLookup(true);
     try {
       const resGdg = await api.get("/mmt/lookup/gudang");
       const raw = pickArray(resGdg?.data);
+
       const gudang: GudangLookup[] = raw
         .map((x: any) => ({
           Kode: String(x?.Kode ?? ""),
@@ -327,53 +485,123 @@ export default function FormKoreksiStok({ navigation }: any) {
     fetchLookups();
   }, []);
 
-  const totalNilai = useMemo(() => details.reduce((a, b) => a + (b.Nilai || 0), 0), [details]);
-
-  const filteredDetails = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return details;
-    return details.filter((x) => {
-      const sku = (x.SKU || "").toLowerCase();
-      const nama = (x.NamaBarang || "").toLowerCase();
-      return sku.includes(q) || nama.includes(q);
-    });
-  }, [details, search]);
-
-  const typeKorName = useMemo(() => LIST_TYPE_KOR.find((t) => t.kode === header.TypeKor)?.nama ?? "", [LIST_TYPE_KOR, header.TypeKor]);
-
-  const commitFisik = useCallback(
-    (sku: string, indexHint: number, valueStr: string, opts?: { keepDraft?: boolean }) => {
-      const trimmed = String(valueStr ?? "").trim();
-      const val = trimmed === "" ? 0 : num(trimmed);
-
-      const realIndex = (() => {
-        const direct = details[indexHint];
-        if (direct?.SKU === sku) return indexHint;
-        const idx = details.findIndex((x) => x.SKU === sku);
-        return idx >= 0 ? idx : indexHint;
-      })();
-
-      calculateRowByIndex(realIndex, { Fisik: val });
-
-      if (!opts?.keepDraft) draftFisikRef.current.delete(sku);
-    },
-    [details, calculateRowByIndex]
+  const typeKorName = useMemo(
+    () => LIST_TYPE_KOR.find((t) => t.kode === header.TypeKor)?.nama ?? "",
+    [LIST_TYPE_KOR, header.TypeKor]
   );
 
-  const adjustFisik = useCallback(
-    (sku: string, indexHint: number, currentFisik: number, delta: number) => {
-      const map = draftFisikRef.current;
-      const base = map.has(sku) ? num(map.get(sku)) : num(currentFisik);
-      const next = String(base + delta);
-      map.set(sku, next);
-      commitFisik(sku, indexHint, next, { keepDraft: true });
+  // --- PENERAPAN ITEM STOK KE ROW (inti pengganti MasterBahanModal + loadAllStock wajib) ---
+  const applyStockToRow = useCallback(
+    (index: number, stock: StockApiItem) => {
+      setDetails((prev) => {
+        const copy = [...prev];
+        const row = copy[index];
+        if (!row) return prev;
+
+        const skuBaru = String(stock?.Kode ?? "").trim();
+        if (!skuBaru) {
+          toast.warn("Validasi", "SKU kosong dari hasil pencarian.");
+          return prev;
+        }
+
+        const isDuplicate = copy.some((d, i) => String(d.SKU || "").trim() === skuBaru && i !== index);
+        if (isDuplicate) {
+          toast.warn("Duplikat", `Bahan ${skuBaru} sudah ada di daftar.`);
+          return prev;
+        }
+
+        const system = num(stock?.Stok);
+        const harga = num(stock?.HRGBELI);
+
+        const next: DetailItem = {
+          ...row,
+          SKU: skuBaru,
+          NamaBarang: String(stock?.Nama ?? ""),
+          Satuan: String(stock?.Satuan ?? ""),
+          Panjang: num(stock?.Panjang),
+          Lebar: num(stock?.Lebar),
+          System: system,
+          Harga: harga,
+          Fisik: 0,
+          Qty: fixNegZero(0 - system),
+          Nilai: fixNegZero((0 - system) * harga),
+        };
+
+        copy[index] = next;
+
+        if (index === copy.length - 1) {
+          copy.push({
+            __id: makeId(),
+            SKU: "",
+            NamaBarang: "",
+            Satuan: "",
+            Panjang: 0,
+            Lebar: 0,
+            Expired: null,
+            System: 0,
+            Fisik: 0,
+            Qty: 0,
+            Harga: 0,
+            Nilai: 0,
+          });
+        }
+
+        return copy;
+      });
     },
-    [commitFisik]
+    []
+  );
+
+  const ensureEditableIndex = useCallback((): number => {
+    let idx = details.findIndex((d) => !String(d.SKU || "").trim());
+    if (idx >= 0) return idx;
+
+    const newId = makeId();
+    setDetails((prev) => [
+      ...prev,
+      {
+        __id: newId,
+        SKU: "",
+        NamaBarang: "",
+        Satuan: "",
+        Panjang: 0,
+        Lebar: 0,
+        Expired: null,
+        System: 0,
+        Fisik: 0,
+        Qty: 0,
+        Harga: 0,
+        Nilai: 0,
+      },
+    ]);
+
+    return details.length;
+  }, [details]);
+
+  const openStockSearch = useCallback(
+    (index?: number) => {
+      if (!header.GudangKode) {
+        toast.warn("Validasi", "Pilih gudang terlebih dahulu");
+        return;
+      }
+      const idx = typeof index === "number" ? index : ensureEditableIndex();
+      setCurrentDetailIndex(idx);
+      setStockModalOpen(true);
+    },
+    [header.GudangKode, ensureEditableIndex]
+  );
+
+  const onPickStock = useCallback(
+    (stock: StockApiItem) => {
+      const idx = currentDetailIndex ?? ensureEditableIndex();
+      applyStockToRow(idx, stock);
+      setCurrentDetailIndex(null);
+    },
+    [currentDetailIndex, ensureEditableIndex, applyStockToRow]
   );
 
   const loadAllStockFromGudang = useCallback(async () => {
     if (!header.GudangKode) return toast.warn("Validasi", "Pilih gudang terlebih dahulu");
-
     setLoading(true);
     try {
       const res = await api.get("/mmt/koreksi-stok/stok", {
@@ -382,11 +610,7 @@ export default function FormKoreksiStok({ navigation }: any) {
 
       const dataStok = pickArray(res?.data);
       if (!dataStok.length) {
-        setDetails([]);
-        draftFisikRef.current.clear();
-        draftPanjangRef.current.clear();
-        draftLebarRef.current.clear();
-        toast.warn("Info", "Tidak ada data stok ditemukan")
+        toast.warn("Info", "Tidak ada data stok ditemukan");
         return;
       }
 
@@ -397,6 +621,7 @@ export default function FormKoreksiStok({ navigation }: any) {
         const nilai = qty * harga;
 
         return {
+          __id: String(item?.Kode ?? makeId()),
           SKU: String(item?.Kode ?? ""),
           NamaBarang: String(item?.Nama ?? ""),
           Satuan: String(item?.Satuan ?? ""),
@@ -414,14 +639,45 @@ export default function FormKoreksiStok({ navigation }: any) {
       draftFisikRef.current.clear();
       draftPanjangRef.current.clear();
       draftLebarRef.current.clear();
+
+      // sisipkan satu baris kosong di akhir untuk input manual
+      mapped.push({
+        __id: makeId(),
+        SKU: "",
+        NamaBarang: "",
+        Satuan: "",
+        Panjang: 0,
+        Lebar: 0,
+        Expired: null,
+        System: 0,
+        Fisik: 0,
+        Qty: 0,
+        Harga: 0,
+        Nilai: 0,
+      });
+
       setDetails(mapped);
       setHeaderCollapsed(true);
+      toast.success("Sukses", "Stok gudang dimuat");
     } catch (e: any) {
-      toast.error("Gagal", 'Gagal memuat stok'+ String(e?.response?.data?.message || e?.message || "Unknown"));
+      toast.error("Gagal", "Gagal memuat stok: " + String(e?.response?.data?.message || e?.message || "Unknown"));
     } finally {
       setLoading(false);
     }
   }, [header.GudangKode, header.Tanggal]);
+
+  const totalNilai = useMemo(() => details.reduce((a, b) => a + (b.Nilai || 0), 0), [details]);
+
+  const itemsToRender = useMemo(() => {
+    const valid = details.filter((d) => String(d.SKU || "").trim());
+    return valid.map((d) => ({
+      id: d.__id,
+      namaBahan: d.NamaBarang,
+      qrValue: d.SKU,
+      panjang: d.Panjang,
+      lebar: d.Lebar,
+    }));
+  }, [details]);
 
   const saveData = useCallback(async () => {
     const validDetails = details.filter((d) => d.SKU && d.SKU.trim() !== "");
@@ -437,131 +693,141 @@ export default function FormKoreksiStok({ navigation }: any) {
           ...header,
           TypeName: typeName,
         },
-        details: validDetails,
+        details: validDetails.map(({ __id, ...rest }) => rest),
       };
 
       await api.post("/mmt/koreksi-stok", payload);
-
-      toast.success("Sukses", "Simpan Berhasil")
+      toast.success("Sukses", "Simpan Berhasil");
       navigation.goBack();
     } catch (e: any) {
-      toast.error("Gagal", 'Gagal Simpan: ' + String(e?.response?.data?.message || e?.message || "Unknown"));
+      toast.error("Gagal", "Gagal Simpan: " + String(e?.response?.data?.message || e?.message || "Unknown"));
     } finally {
       setSaving(false);
     }
   }, [details, header, LIST_TYPE_KOR, navigation]);
 
-  const Row = React.memo(({ item, index }: { item: DetailItem; index: number }) => {
-    const [localFisik, setLocalFisik] = useState<string>(() => draftFisikRef.current.get(item.SKU) ?? String(item.Fisik ?? 0));
-    const [localPanjang, setLocalPanjang] = useState<string>(() => draftPanjangRef.current.get(item.SKU) ?? String(item.Panjang ?? 0));
-    const [localLebar, setLocalLebar] = useState<string>(() => draftLebarRef.current.get(item.SKU) ?? String(item.Lebar ?? 0));
+  const Row = React.memo(
+    ({ item, index }: { item: DetailItem; index: number }) => {
+      const [localFisik, setLocalFisik] = useState<string>(() => draftFisikRef.current.get(item.__id) ?? String(item.Fisik ?? 0));
+      const [localPanjang, setLocalPanjang] = useState<string>(() => draftPanjangRef.current.get(item.__id) ?? String(item.Panjang ?? 0));
+      const [localLebar, setLocalLebar] = useState<string>(() => draftLebarRef.current.get(item.__id) ?? String(item.Lebar ?? 0));
 
-    useEffect(() => {
-      setLocalFisik(draftFisikRef.current.get(item.SKU) ?? String(item.Fisik ?? 0));
-      setLocalPanjang(draftPanjangRef.current.get(item.SKU) ?? String(item.Panjang ?? 0));
-      setLocalLebar(draftLebarRef.current.get(item.SKU) ?? String(item.Lebar ?? 0));
-    }, [item.SKU, item.Fisik, item.Panjang, item.Lebar]);
+      useEffect(() => {
+        setLocalFisik(draftFisikRef.current.get(item.__id) ?? String(item.Fisik ?? 0));
+        setLocalPanjang(draftPanjangRef.current.get(item.__id) ?? String(item.Panjang ?? 0));
+        setLocalLebar(draftLebarRef.current.get(item.__id) ?? String(item.Lebar ?? 0));
+      }, [item.__id, item.Fisik, item.Panjang, item.Lebar]);
 
-    const qty = item.Qty;
+      const qty = item.Qty;
 
-    return (
-      <View style={styles.rowCard}>
-        <View style={styles.rowHeader}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.skuText}>{item.SKU || "—"}</Text>
-            <Text style={styles.namaText} numberOfLines={2}>
-              {item.NamaBarang || "Nama Barang"}
-            </Text>
+      return (
+        <View style={styles.rowCard}>
+          <View style={styles.rowHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.skuText}>{item.SKU || "— (Pilih Item)"}</Text>
+              <Text style={styles.namaText} numberOfLines={2}>
+                {item.NamaBarang || "Nama Barang"}
+              </Text>
 
-            <Text style={styles.smallMeta}>
-              Satuan: <Text style={styles.smallStrong}>{item.Satuan || "—"}</Text>
-            </Text>
+              <Text style={styles.smallMeta}>
+                Satuan: <Text style={styles.smallStrong}>{item.Satuan || "—"}</Text>
+              </Text>
+
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+                <TouchableOpacity
+                  style={[styles.secondaryBtn, { flex: 1, paddingVertical: 10 }]}
+                  onPress={() => openStockSearch(index)}
+                  disabled={saving || loading}
+                >
+                  <Text style={styles.secondaryBtnText}>{item.SKU ? "Ganti Item" : "Pilih Item"}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <TouchableOpacity onPress={() => openDeleteConfirm(item)} style={styles.deleteBtn}>
+              <MaterialIcons name="restore-from-trash" size={22} color={DANGER} />
+            </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={() => openDeleteConfirm(item)} style={styles.deleteBtn}>
-            <MaterialIcons name="restore-from-trash" size={22} color={DANGER} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Ukuran editable (Panjang & Lebar) */}
-        <View style={[styles.gridRow, { marginTop: 10 }]}>
-          <View style={styles.gridCell}>
-            <Text style={styles.gridLabel}>Panjang (m)</Text>
-            <TextInput
-              style={[styles.inputMini, { textAlign: "right" }]}
-              keyboardType="decimal-pad"
-              value={localPanjang}
-              placeholder="0"
-              placeholderTextColor="#9AA0A6"
-              onChangeText={(v) => {
-                setLocalPanjang(v);
-                draftPanjangRef.current.set(item.SKU, v);
-              }}
-              onEndEditing={() => commitUkuran(item.SKU, index, "Panjang", localPanjang, { keepDraft: false })}
-              onBlur={() => commitUkuran(item.SKU, index, "Panjang", localPanjang, { keepDraft: false })}
-            />
-          </View>
-
-          <View style={styles.gridCell}>
-            <Text style={styles.gridLabel}>Lebar (m)</Text>
-            <TextInput
-              style={[styles.inputMini, { textAlign: "right" }]}
-              keyboardType="decimal-pad"
-              value={localLebar}
-              placeholder="0"
-              placeholderTextColor="#9AA0A6"
-              onChangeText={(v) => {
-                setLocalLebar(v);
-                draftLebarRef.current.set(item.SKU, v);
-              }}
-              onEndEditing={() => commitUkuran(item.SKU, index, "Lebar", localLebar, { keepDraft: false })}
-              onBlur={() => commitUkuran(item.SKU, index, "Lebar", localLebar, { keepDraft: false })}
-            />
-          </View>
-        </View>
-
-        <View style={styles.gridRow}>
-          <View style={styles.gridCell}>
-            <Text style={styles.gridLabel}>Stok Sistem</Text>
-            <Text style={styles.gridValue}>{item.System}</Text>
-          </View>
-
-          <View style={styles.gridCell}>
-            <Text style={styles.gridLabel}>Stok Fisik</Text>
-            <View style={styles.fisikBox}>
-              <TouchableOpacity style={styles.adjBtn} onPress={() => adjustFisik(item.SKU, index, item.Fisik, -1)}>
-                <Text style={styles.adjText}>-</Text>
-              </TouchableOpacity>
-
+          <View style={[styles.gridRow, { marginTop: 10 }]}>
+            <View style={styles.gridCell}>
+              <Text style={styles.gridLabel}>Panjang (m)</Text>
               <TextInput
-                style={styles.fisikInput}
-                keyboardType="number-pad"
-                value={localFisik}
+                style={[styles.inputMini, { textAlign: "right" }]}
+                keyboardType="decimal-pad"
+                value={localPanjang}
                 placeholder="0"
                 placeholderTextColor="#9AA0A6"
-                selectTextOnFocus
                 onChangeText={(v) => {
-                  setLocalFisik(v);
-                  draftFisikRef.current.set(item.SKU, v);
+                  setLocalPanjang(v);
+                  draftPanjangRef.current.set(item.__id, v);
                 }}
-                onEndEditing={() => commitFisik(item.SKU, index, localFisik, { keepDraft: false })}
-                onBlur={() => commitFisik(item.SKU, index, localFisik, { keepDraft: false })}
-                returnKeyType="done"
+                onEndEditing={() => commitUkuran(item.__id, index, "Panjang", localPanjang, { keepDraft: false })}
+                onBlur={() => commitUkuran(item.__id, index, "Panjang", localPanjang, { keepDraft: false })}
               />
+            </View>
 
-              <TouchableOpacity style={styles.adjBtn} onPress={() => adjustFisik(item.SKU, index, item.Fisik, +1)}>
-                <Text style={styles.adjText}>+</Text>
-              </TouchableOpacity>
+            <View style={styles.gridCell}>
+              <Text style={styles.gridLabel}>Lebar (m)</Text>
+              <TextInput
+                style={[styles.inputMini, { textAlign: "right" }]}
+                keyboardType="decimal-pad"
+                value={localLebar}
+                placeholder="0"
+                placeholderTextColor="#9AA0A6"
+                onChangeText={(v) => {
+                  setLocalLebar(v);
+                  draftLebarRef.current.set(item.__id, v);
+                }}
+                onEndEditing={() => commitUkuran(item.__id, index, "Lebar", localLebar, { keepDraft: false })}
+                onBlur={() => commitUkuran(item.__id, index, "Lebar", localLebar, { keepDraft: false })}
+              />
             </View>
           </View>
-        </View>
 
-        <Text style={[styles.qtyInline, { color: qty < 0 ? DANGER : qty > 0 ? SUCCESS : MUTED }]}>
-          Qty Koreksi: <Text style={{ fontWeight: "900" }}>{qty}</Text>
-        </Text>
-      </View>
-    );
-  });
+          <View style={styles.gridRow}>
+            <View style={styles.gridCell}>
+              <Text style={styles.gridLabel}>Stok Sistem</Text>
+              <Text style={styles.gridValue}>{item.System}</Text>
+            </View>
+
+            <View style={styles.gridCell}>
+              <Text style={styles.gridLabel}>Stok Fisik</Text>
+              <View style={styles.fisikBox}>
+                <TouchableOpacity style={styles.adjBtn} onPress={() => adjustFisik(item.__id, index, item.Fisik, -1)}>
+                  <Text style={styles.adjText}>-</Text>
+                </TouchableOpacity>
+
+                <TextInput
+                  style={styles.fisikInput}
+                  keyboardType="number-pad"
+                  value={localFisik}
+                  placeholder="0"
+                  placeholderTextColor="#9AA0A6"
+                  selectTextOnFocus
+                  onChangeText={(v) => {
+                    setLocalFisik(v);
+                    draftFisikRef.current.set(item.__id, v);
+                  }}
+                  onEndEditing={() => commitFisik(item.__id, index, localFisik, { keepDraft: false })}
+                  onBlur={() => commitFisik(item.__id, index, localFisik, { keepDraft: false })}
+                  returnKeyType="done"
+                />
+
+                <TouchableOpacity style={styles.adjBtn} onPress={() => adjustFisik(item.__id, index, item.Fisik, +1)}>
+                  <Text style={styles.adjText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+          <Text style={[styles.qtyInline, { color: qty < 0 ? DANGER : qty > 0 ? SUCCESS : MUTED }]}>
+            Qty Koreksi: <Text style={{ fontWeight: "900" }}>{qty}</Text>
+          </Text>
+        </View>
+      );
+    }
+  );
 
   const renderItem = useCallback(({ item, index }: { item: DetailItem; index: number }) => <Row item={item} index={index} />, []);
 
@@ -584,10 +850,17 @@ export default function FormKoreksiStok({ navigation }: any) {
         <View style={{ flex: 1 }} />
 
         <TouchableOpacity
-          style={[styles.saveBtn, (saving || loading) && { opacity: 0.6 }]}
-          onPress={saveData}
+          style={[styles.appBarBtn, { marginRight: 10 }, (saving || loading) && { opacity: 0.6 }]}
+          onPress={() => {
+            if (!itemsToRender.length) return toast.warn("Validasi", "Pilih item terlebih dahulu");
+            setBarcodeOpen(true);
+          }}
           disabled={saving || loading}
         >
+          <Text style={styles.appBarBtnText}>Barcode</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.saveBtn, (saving || loading) && { opacity: 0.6 }]} onPress={saveData} disabled={saving || loading}>
           <Text style={styles.saveBtnText}>{saving ? "Menyimpan..." : "Simpan"}</Text>
         </TouchableOpacity>
       </View>
@@ -635,21 +908,26 @@ export default function FormKoreksiStok({ navigation }: any) {
             />
           </View>
 
+          {/* Tombol bulk opsional */}
           <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
-            <TouchableOpacity style={[styles.primaryBtn, { flex: 1 }, (saving || loading) && { opacity: 0.6 }]} onPress={loadAllStockFromGudang} disabled={saving || loading}>
+            <TouchableOpacity
+              style={[styles.secondaryBtn, { flex: 1 }, (saving || loading) && { opacity: 0.6 }]}
+              onPress={loadAllStockFromGudang}
+              disabled={saving || loading}
+            >
               {loading ? (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <ActivityIndicator color="#fff" />
-                  <Text style={styles.primaryBtnText}>Mengambil stok...</Text>
+                  <ActivityIndicator />
+                  <Text style={styles.secondaryBtnText}>Memuat...</Text>
                 </View>
               ) : (
-                <Text style={styles.primaryBtnText}>Ambil Semua Stok Gudang</Text>
+                <Text style={styles.secondaryBtnText}>Ambil Semua Stok</Text>
               )}
             </TouchableOpacity>
-
+{/*
             <TouchableOpacity style={[styles.secondaryBtn, { width: 120 }]} onPress={addRow} disabled={saving || loading}>
               <Text style={styles.secondaryBtnText}>Tambah</Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </View>
 
           {loadingLookup && (
@@ -660,33 +938,36 @@ export default function FormKoreksiStok({ navigation }: any) {
         </View>
       )}
 
-      {/* Toolbar */}
+      {/* Toolbar SEARCH STOCK (baru) */}
       <View style={styles.toolbar}>
         <View style={styles.searchWrap}>
           <TextInput
             style={styles.searchInput}
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Cari Nama Barang"
+            value={searchKey}
+            onChangeText={setSearchKey}
+            placeholder="Cari stok ..."
             placeholderTextColor="#9AA0A6"
             returnKeyType="search"
+            onSubmitEditing={() => openStockSearch()}
           />
-
-          {search.length > 0 && (
-            <TouchableOpacity style={styles.clearBtn} onPress={() => setSearch("")} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={styles.clearText}>×</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
+        <TouchableOpacity
+          style={styles.iconBtn}
+          onPress={() => openStockSearch()}
+          disabled={saving || loading}
+        >
+          <MaterialIcons name="search" size={20} color={PRIMARY} />
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.headerToggle} onPress={() => setHeaderCollapsed((prev: boolean) => !prev)}>
-          <Text style={styles.headerToggleText}>{headerCollapsed ? "Tampilkan Filter ▼" : "Sembunyikan Filter ▲"}</Text>
+          <Text style={styles.headerToggleText}>{headerCollapsed ? "Filter ▼" : "Filter ▲"}</Text>
         </TouchableOpacity>
       </View>
 
       <FlatList
-        data={filteredDetails}
-        keyExtractor={(item, idx) => `${item.SKU || "row"}-${idx}`}
+        data={details}
+        keyExtractor={(item) => item.__id}
         renderItem={renderItem}
         contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 10, paddingBottom: 90 }}
         removeClippedSubviews
@@ -695,7 +976,6 @@ export default function FormKoreksiStok({ navigation }: any) {
         windowSize={10}
         updateCellsBatchingPeriod={50}
         keyboardShouldPersistTaps="handled"
-        ListEmptyComponent={<Text style={{ textAlign: "center", marginTop: 24, color: MUTED }}>{loading ? "Memuat..." : "Tekan Ambil Semua Stok Gudang"}</Text>}
       />
 
       {/* Bottom dock */}
@@ -715,35 +995,6 @@ export default function FormKoreksiStok({ navigation }: any) {
         onClose={() => setOpenGudang(false)}
       />
 
-      <ConfirmDialog
-        visible={confirmOpen}
-        variant="danger"
-        title="Hapus Item"
-        message="Yakin ingin menghapus item ini?"
-        detail={`${pendingDelete?.SKU || "—"}\n${pendingDelete?.NamaBarang || ""}`}
-        cancelText="Batal"
-        confirmText="Hapus"
-        loading={confirmLoading}
-        onCancel={closeDeleteConfirm}
-        onConfirm={() => {
-          const sku = String(pendingDelete?.SKU ?? "").trim();
-          if (!sku) {
-            toast?.warn?.("Tidak bisa hapus", "SKU kosong.");
-            closeDeleteConfirm();
-            return;
-          }
-
-          setConfirmLoading(true);
-          try {
-            removeRowBySku(sku);
-            toast?.success?.("Berhasil", "Item berhasil dihapus");
-            closeDeleteConfirm();
-          } finally {
-            setConfirmLoading(false);
-          }
-        }}
-      />
-
       <SelectModal<TypeKorLookup>
         visible={openType}
         title="Pilih Tipe Koreksi"
@@ -753,6 +1004,84 @@ export default function FormKoreksiStok({ navigation }: any) {
         onSelect={(t) => setHeader((p) => ({ ...p, TypeKor: Number(t.kode) }))}
         onClose={() => setOpenType(false)}
       />
+
+      <StockSearchModal
+        visible={stockModalOpen}
+        gudangKode={header.GudangKode}
+        tanggal={header.Tanggal}
+        initialQuery={searchKey}
+        onClose={() => setStockModalOpen(false)}
+        onPick={onPickStock}
+      />
+
+      <ConfirmDialog
+        visible={confirmOpen}
+        variant="danger"
+        title="Hapus Item"
+        message="Yakin ingin menghapus item ini?"
+        detail={`${pendingDelete?.sku || "—"}\n${pendingDelete?.nama || ""}`}
+        cancelText="Batal"
+        confirmText="Hapus"
+        loading={confirmLoading}
+        onCancel={closeDeleteConfirm}
+        onConfirm={() => {
+          const id = String(pendingDelete?.id ?? "").trim();
+          if (!id) {
+            toast?.warn?.("Tidak bisa hapus", "ID item kosong.");
+            closeDeleteConfirm();
+            return;
+          }
+
+          setConfirmLoading(true);
+          try {
+            removeRowById(id);
+            toast?.success?.("Berhasil", "Item berhasil dihapus");
+            closeDeleteConfirm();
+          } finally {
+            setConfirmLoading(false);
+          }
+        }}
+      />
+
+      {/* Barcode Preview (Fullscreen) */}
+      <Modal visible={barcodeOpen} animationType="slide" onRequestClose={() => setBarcodeOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: "#111827" }}>
+          <View style={[styles.appBar, { backgroundColor: PRIMARY }]}>
+            <TouchableOpacity style={styles.appBarBtn} onPress={() => setBarcodeOpen(false)}>
+              <Text style={styles.appBarBtnText}>Tutup</Text>
+            </TouchableOpacity>
+            <View style={{ flex: 1 }} />
+          </View>
+
+          <FlatList
+            data={itemsToRender}
+            keyExtractor={(it) => it.id}
+            contentContainerStyle={{ padding: 16 }}
+            renderItem={({ item }) => (
+              <View style={{ backgroundColor: "white", borderRadius: 16, padding: 14, marginBottom: 12 }}>
+                <View style={{ flexDirection: "row", gap: 14, alignItems: "center" }}>
+                  <View style={{ width: 90, height: 90, alignItems: "center", justifyContent: "center" }}>
+                    <QRCode value={String(item.qrValue)} size={85} />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: "900", color: "#111827" }}>{item.qrValue}</Text>
+                    <Text style={{ color: MUTED, fontWeight: "700", marginTop: 4 }}>
+                      Ukuran: {item.panjang}m x {item.lebar}m
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={{ borderTopWidth: 1, borderTopColor: "#E5E7EB", marginVertical: 10 }} />
+                <Text style={{ textAlign: "center", fontWeight: "900", color: "#111827" }}>
+                  {String(item.namaBahan || "").toUpperCase()}
+                </Text>
+              </View>
+            )}
+            ListEmptyComponent={<Text style={{ textAlign: "center", marginTop: 24, color: "#E5E7EB" }}>Tidak ada item untuk barcode</Text>}
+          />
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -823,7 +1152,16 @@ const styles = StyleSheet.create({
   primaryBtn: { borderRadius: 12, paddingVertical: 12, alignItems: "center", justifyContent: "center", backgroundColor: PRIMARY },
   primaryBtnText: { color: "white", fontWeight: "900" },
 
-  secondaryBtn: { borderRadius: 12, paddingVertical: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#F3F4F6", borderWidth: 1, borderColor: BORDER },
+  secondaryBtn: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingHorizontal: 10,
+  },
   secondaryBtnText: { color: PRIMARY, fontWeight: "900" },
 
   toolbar: {
@@ -850,15 +1188,22 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     paddingRight: 26,
   },
-  clearBtn: { position: "absolute", right: 10, top: "50%", transform: [{ translateY: -10 }] },
-  clearText: { fontSize: 18, fontWeight: "900", color: MUTED },
+  iconBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   headerToggle: { paddingHorizontal: 8, paddingVertical: 8 },
   headerToggleText: { color: PRIMARY, fontWeight: "900" },
 
   rowCard: { backgroundColor: CARD, borderRadius: 16, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: BORDER },
   rowHeader: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   deleteBtn: { paddingHorizontal: 6, paddingVertical: 2 },
-  deleteText: { fontSize: 16 },
 
   skuText: { color: PRIMARY, fontWeight: "900" },
   namaText: { marginTop: 2, fontWeight: "900", color: "#111827" },
