@@ -50,7 +50,13 @@ type BarcodeItem = {
 
 const API = '/mmt/koreksi-stok';
 
-const toISO = (d: Date) => d.toISOString().slice(0, 10);
+const toISO = (d: Date) => {
+  const y = d.getFullYear();
+  const m = pad2(d.getMonth() + 1);
+  const day = pad2(d.getDate());
+  return `${y}-${m}-${day}`;
+};
+
 const pad2 = (n: number) => (n < 10 ? `0${n}` : String(n));
 
 const formatTanggalDDMMYYYY = (input: string) => {

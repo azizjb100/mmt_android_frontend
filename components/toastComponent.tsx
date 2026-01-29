@@ -1,4 +1,3 @@
-// components/toastcomponent.ts
 import { showMessage } from "react-native-flash-message";
 
 type ToastOptions = {
