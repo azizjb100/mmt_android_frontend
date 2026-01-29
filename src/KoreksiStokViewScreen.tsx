@@ -33,7 +33,7 @@ type DetailKoreksi = {
 
 type KoreksiStok = {
   Nomor: string;
-  Tanggal: string; // ex: "28-January-2026"
+  Tanggal: string;
   Gudang: string;
   Tipe: number;
   Nama: string | null;
@@ -50,8 +50,6 @@ type BarcodeItem = {
 
 const API = '/mmt/koreksi-stok';
 
-/* ================= UTIL ================= */
-
 const toISO = (d: Date) => d.toISOString().slice(0, 10);
 const pad2 = (n: number) => (n < 10 ? `0${n}` : String(n));
 
@@ -59,7 +57,6 @@ const formatTanggalDDMMYYYY = (input: string) => {
   const s = String(input || '').trim();
   if (!s) return '-';
 
-  // ISO yyyy-mm-dd
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
     const [y, m, d] = s.split('-');
     return `${d}-${m}-${y}`;
@@ -91,17 +88,13 @@ const pickArray = (v: any) => {
 const typeLabel = (t: number) =>
   t === 100 ? 'Terima' : t === 200 ? 'Keluar' : t === 300 ? 'Sisa Produksi' : String(t ?? '-');
 
-/* ================= SCREEN ================= */
-
 export default function KoreksiStokViewScreen({ navigation }: any) {
   const [data, setData] = useState<KoreksiStok[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // ISO date for API
   const [startDate, setStartDate] = useState(() => toISO(new Date(Date.now() - 30 * 86400000)));
   const [endDate, setEndDate] = useState(() => toISO(new Date()));
 
-  // date picker modal
   const [picker, setPicker] = useState<'start' | 'end' | null>(null);
   const [pickerTemp, setPickerTemp] = useState<Date>(new Date());
 
@@ -162,7 +155,6 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
   };
 
   const loadDetail = async (nomor: string) => {
-    // cek dulu apakah sudah ada detail
     const existing = data.find(x => x.Nomor === nomor);
     if (existing?.Detail?.length) return;
 
@@ -170,7 +162,6 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
       const res = await api.get(`${API}/detail/${nomor}`);
       const detail = pickArray(res?.data) as DetailKoreksi[];
 
-      // update state dengan aman
       setData(prev =>
         prev.map(row => (row.Nomor === nomor ? { ...row, Detail: detail } : row)),
       );
@@ -209,7 +200,6 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
     try {
       await loadDetail(selectedItem.Nomor);
 
-      // ambil master terbaru dari state (setelah loadDetail)
       const master = ((): KoreksiStok | undefined => data.find(x => x.Nomor === selectedItem.Nomor))();
       const details = master?.Detail || [];
 
@@ -569,7 +559,6 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
   );
 }
 
-/* ================= STYLE ================= */
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F5F5F5' },
@@ -577,7 +566,6 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', padding: 12 },
   btnDisabled: { opacity: 0.35 },
 
-  // Buttons
   iconBtn: {
     width: 44,
     height: 44,
@@ -599,7 +587,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '900',
     fontSize: 12,
-    marginLeft: 8, // aman untuk RN lama
+    marginLeft: 8,
   },
 
   btnSuccess: { backgroundColor: '#16A34A' },
@@ -607,7 +595,6 @@ const styles = StyleSheet.create({
   btnInfo: { backgroundColor: '#0288D1' },
   btnDanger: { backgroundColor: '#C62828' },
 
-  // Filter
   filterCard: {
     backgroundColor: 'white',
     marginHorizontal: 12,
@@ -645,7 +632,6 @@ const styles = StyleSheet.create({
   },
   refreshText: { color: '#fff', fontWeight: '900', fontSize: 13, marginLeft: 8 },
 
-  // List Card
   card: {
     backgroundColor: 'white',
     borderRadius: 12,
@@ -689,7 +675,6 @@ const styles = StyleSheet.create({
   badgeRed: { backgroundColor: '#D32F2F' },
   badgeGreen: { backgroundColor: '#388E3C' },
 
-  // Barcode modal
   modalScreen: { flex: 1, backgroundColor: '#F5F5F5' },
   modalHeader: {
     backgroundColor: '#fff',
@@ -730,7 +715,6 @@ const styles = StyleSheet.create({
   labelDivider: { borderTopWidth: 1, borderTopColor: '#111827', borderStyle: 'dashed', marginVertical: 10 },
   namaBahan: { textAlign: 'center', fontWeight: '900', color: '#111827' },
 
-  // Date picker modal custom
   dpBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 16 },
   dpCard: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#E5E7EB' },
   dpHeader: { paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },

@@ -49,7 +49,6 @@ type MasterHeader = {
 type GudangLookup = { Kode: string; Nama: string };
 type TypeKorLookup = { kode: number; nama: string };
 
-// Bentuk item stok dari endpoint /mmt/koreksi-stok/stok (yang kamu pakai di loadAllStock)
 type StockApiItem = {
   Kode?: string;
   Nama?: string;
@@ -277,18 +276,16 @@ export default function FormKoreksiStokScreen({ navigation }: any) {
   });
 
   const [details, setDetails] = useState<DetailItem[]>([]);
-  const [searchKey, setSearchKey] = useState(""); // keyword search stok gudang (bukan filter lokal)
+  const [searchKey, setSearchKey] = useState("");
   const [stockModalOpen, setStockModalOpen] = useState(false);
   const [currentDetailIndex, setCurrentDetailIndex] = useState<number | null>(null);
 
   const [barcodeOpen, setBarcodeOpen] = useState(false);
 
-  // draft input per rowId
   const draftFisikRef = useRef<Map<string, string>>(new Map());
   const draftPanjangRef = useRef<Map<string, string>>(new Map());
   const draftLebarRef = useRef<Map<string, string>>(new Map());
 
-  // --- delete confirm ---
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; sku: string; nama: string } | null>(null);
@@ -325,7 +322,6 @@ export default function FormKoreksiStokScreen({ navigation }: any) {
     ]);
   }, []);
 
-  // Vue: if (!isEdit) addRow() onMounted
   useEffect(() => {
     if (!details.length) addRow();
   }, []);
@@ -453,7 +449,6 @@ export default function FormKoreksiStokScreen({ navigation }: any) {
     [commitFisik]
   );
 
-  // --- lookup gudang ---
   const fetchLookups = useCallback(async () => {
     setLoadingLookup(true);
     try {
@@ -490,7 +485,6 @@ export default function FormKoreksiStokScreen({ navigation }: any) {
     [LIST_TYPE_KOR, header.TypeKor]
   );
 
-  // --- PENERAPAN ITEM STOK KE ROW (inti pengganti MasterBahanModal + loadAllStock wajib) ---
   const applyStockToRow = useCallback(
     (index: number, stock: StockApiItem) => {
       setDetails((prev) => {
@@ -640,7 +634,6 @@ export default function FormKoreksiStokScreen({ navigation }: any) {
       draftPanjangRef.current.clear();
       draftLebarRef.current.clear();
 
-      // sisipkan satu baris kosong di akhir untuk input manual
       mapped.push({
         __id: makeId(),
         SKU: "",
