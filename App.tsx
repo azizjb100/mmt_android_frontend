@@ -1,15 +1,16 @@
-import React from "react";
-import { StatusBar } from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import React from 'react';
+import { StatusBar } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import LoginScreen from "./src/LoginScreen";
-import HomeScreen from "./src/HomeScreen";
-import RealisasiProduksiScreen from "./src/RealisasiProduksiScreen";
-import KoreksiStokViewScreen from "./src/KoreksiStokViewScreen";
-import FormKoreksiStokScreen from "./src/FormKoreksiStokScreen";
-import FlashMessage from "react-native-flash-message";
+import LoginScreen from './src/LoginScreen';
+import HomeScreen from './src/HomeScreen';
+import RealisasiProduksiScreen from './src/RealisasiProduksiScreen';
+import KoreksiStokViewScreen from './src/KoreksiStokViewScreen';
+import FormKoreksiStokScreen from './src/FormKoreksiStokScreen';
+import DalamPengembanganScreen from './src/DalamPengembanganScreen';
+import FlashMessage from 'react-native-flash-message';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -17,6 +18,9 @@ export type RootStackParamList = {
   RealisasiProduksi: undefined;
   KoreksiStokView: undefined;
   FormKoreksiStok: undefined;
+  DalamPengembangan: {
+    featureName?: string;
+  };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -45,7 +49,7 @@ export default function App(): React.JSX.Element {
             component={KoreksiStokViewScreen}
             options={{
               headerShown: true,
-              title: "Koreksi Stok",
+              title: 'Koreksi Stok',
             }}
           />
 
@@ -54,8 +58,13 @@ export default function App(): React.JSX.Element {
             component={FormKoreksiStokScreen}
             options={{
               headerShown: true,
-              title: "Input Koreksi Stok",
+              title: 'Input Koreksi Stok',
             }}
+          />
+
+          <Stack.Screen
+            name="DalamPengembangan"
+            component={DalamPengembanganScreen}
           />
         </Stack.Navigator>
       </NavigationContainer>
