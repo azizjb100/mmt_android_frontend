@@ -1,6 +1,12 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable react-native/no-inline-styles */
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+} from 'react';
 import {
   View,
   Text,
@@ -63,11 +69,18 @@ const DANGER = '#DC2626';
 
 const FRAME_W = 260;
 const FRAME_H = 160;
+const SCAN_IDLE_MS = 180;
 
 const makeId = () => `row_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 const num = (v: any) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+};
+const formatDateDDMMYYYY = (date: Date) => {
+  const dd = String(date.getDate()).padStart(2, '0');
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const yyyy = date.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
 };
 
 const pickArray = (data: any): any[] => {
@@ -149,6 +162,9 @@ function SelectModal<T>(props: {
 
 export default function RealisasiProduksiScreen({ navigation }: any) {
   const [saving, setSaving] = useState(false);
+  const hiddenScanInputRef = useRef<TextInput | null>(null);
+  const hiddenScanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [hiddenScanBuffer, setHiddenScanBuffer] = useState('');
 
   // scanner
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -156,18 +172,26 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
   const [hasPermission, setHasPermission] = useState(false);
   const device = useCameraDevice('back');
 
+  const focusHiddenScanInput = useCallback(() => {
+    setTimeout(() => {
+      hiddenScanInputRef.current?.focus();
+    }, 50);
+  }, []);
+
   useEffect(() => {
     (async () => {
       const status = await Camera.requestCameraPermission();
       setHasPermission(status === 'granted');
     })();
+
+    focusHiddenScanInput();
   }, []);
 
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
 
   const [header, setHeader] = useState<HeaderForm>({
     nomor: 'AUTO',
-    tanggal: new Date().toISOString().slice(0, 10),
+    tanggal: formatDateDDMMYYYY(new Date()),
     gudangKode: 'WH-16',
     gudangNama: 'Gudang Bahan MMT',
     lokasiProduksiKode: 'GPM',
@@ -336,7 +360,7 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
           satuan: String(bahan?.Satuan ?? ''),
           Panjang: num(bahan?.Panjang),
           Lebar: num(bahan?.Lebar),
-          qty: 1, // tetap set default 1, tapi tidak ditampilkan
+          qty: 1,
           stok: num(bahan?.Stok),
           spk:
             bahan?.Nomor_SPK && String(bahan?.Nomor_SPK) !== '0'
@@ -358,6 +382,65 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
     },
     [details, header.gudangKode, applyBarcodeToRow, ensureLastBlankRow],
   );
+
+  const getAutoTargetRowId = useCallback(() => {
+    const firstEmpty = details.find(d => !String(d.barcode || '').trim());
+    if (firstEmpty?.__id) return firstEmpty.__id;
+
+    const last = details[details.length - 1];
+    return last?.__id ?? null;
+  }, [details]);
+
+  const flushHiddenScannerBuffer = useCallback(
+    (raw?: string) => {
+      const bc = String(raw ?? hiddenScanBuffer).trim();
+      setHiddenScanBuffer('');
+
+      if (!bc) {
+        focusHiddenScanInput();
+        return;
+      }
+
+      const targetId = getAutoTargetRowId();
+      if (!targetId) {
+        focusHiddenScanInput();
+        return;
+      }
+
+      handleBarcodeScan(targetId, bc).finally(() => {
+        focusHiddenScanInput();
+      });
+    },
+    [
+      hiddenScanBuffer,
+      getAutoTargetRowId,
+      handleBarcodeScan,
+      focusHiddenScanInput,
+    ],
+  );
+
+  const onHiddenScannerChange = useCallback(
+    (text: string) => {
+      setHiddenScanBuffer(text);
+
+      if (hiddenScanTimerRef.current) {
+        clearTimeout(hiddenScanTimerRef.current);
+      }
+
+      hiddenScanTimerRef.current = setTimeout(() => {
+        flushHiddenScannerBuffer(text);
+      }, SCAN_IDLE_MS);
+    },
+    [flushHiddenScannerBuffer],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (hiddenScanTimerRef.current) {
+        clearTimeout(hiddenScanTimerRef.current);
+      }
+    };
+  }, []);
 
   const codeScanner = useCodeScanner({
     codeTypes: ['code-128', 'ean-13', 'qr'],
@@ -397,7 +480,6 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
 
     setSaving(true);
     try {
-      // SIMPLE: hanya butuh barcode terisi (qty default 1)
       const valid = details.filter(d => String(d.barcode || '').trim());
       if (!valid.length)
         return toast.warn('Validasi', 'Minimal satu barcode harus diisi.');
@@ -414,7 +496,7 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
         details: valid.map(d => ({
           sku: d.sku,
           barcode: d.barcode,
-          qty: 1, // dipaksa 1 untuk mode scan cepat
+          qty: 1,
           satuan: d.satuan,
           spk: d.spk || '0',
           keterangan: d.keterangan || '',
@@ -461,7 +543,7 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
 
               {!!hasData && (
                 <Text style={styles.rowSize}>
-                  {item.sku} • {num(item.Panjang)}m x {num(item.Lebar)}m
+                  Spesifikasi: {num(item.Panjang)}m x {num(item.Lebar)}m
                 </Text>
               )}
             </View>
@@ -469,6 +551,7 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
             <TouchableOpacity
               onPress={() => openScannerForRow(item.__id)}
               style={styles.scanBtn}
+              disabled={hasBarcode}
             >
               <MaterialCommunityIcons
                 name="barcode-scan"
@@ -489,7 +572,7 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
           <View style={{ marginTop: 10 }}>
             <View style={styles.barcodeBox}>
               <TextInput
-                style={[styles.barcodeInput, { paddingRight: 44 }]}
+                style={styles.barcodeInput}
                 value={item.barcode}
                 placeholder="Ketik barcode lalu enter..."
                 placeholderTextColor="#9AA0A6"
@@ -498,16 +581,8 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
                   handleBarcodeScan(item.__id, item.barcode)
                 }
                 returnKeyType="search"
+                editable={!hasBarcode}
               />
-              {!!String(item.barcode || '').trim() && (
-                <TouchableOpacity
-                  onPress={() => setRowField(item.__id, 'barcode', '')}
-                  style={styles.clearInlineBtn}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <MaterialIcons name="close" size={18} color={MUTED} />
-                </TouchableOpacity>
-              )}
             </View>
           </View>
         </View>
@@ -522,6 +597,22 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
         style={styles.screen}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
+        <TextInput
+          ref={hiddenScanInputRef}
+          style={styles.hiddenScannerInput}
+          value={hiddenScanBuffer}
+          onChangeText={onHiddenScannerChange}
+          onSubmitEditing={() => flushHiddenScannerBuffer()}
+          autoFocus
+          blurOnSubmit={false}
+          contextMenuHidden
+          caretHidden
+          showSoftInputOnFocus={false}
+          autoCorrect={false}
+          autoCapitalize="none"
+          editable={!saving && !scannerOpen}
+        />
+
         <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
 
         {/* AppBar aman notch/statusbar */}
@@ -634,7 +725,7 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
             onPress={() => setHeaderCollapsed(p => !p)}
           >
             <Text style={styles.headerToggleText}>
-              {headerCollapsed ? 'Filter ▼' : 'Filter ▲'}
+              {headerCollapsed ? 'Buka Filter ▼' : 'Tutup Filter ▲'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -898,6 +989,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     color: '#111827',
     fontWeight: '800',
+  },
+  hiddenScannerInput: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    opacity: 0,
+    left: -100,
+    top: -100,
   },
   clearInlineBtn: {
     position: 'absolute',
