@@ -8,7 +8,7 @@ import {
   StatusBar,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../App';
+import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DalamPengembangan'>;
 

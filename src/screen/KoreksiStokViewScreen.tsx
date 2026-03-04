@@ -14,9 +14,9 @@ import {
 import DatePicker from 'react-native-date-picker';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import QRCode from 'react-native-qrcode-svg';
-import api from '../src/api/api.services';
-import { toast } from '../components/toastComponent';
-import ConfirmDialog from '../components/confirmComponent';
+import api from '../api/api.services';
+import { toast } from '../../components/toastComponent';
+import ConfirmDialog from '../../components/confirmComponent';
 
 type DetailKoreksi = {
   Nomor: string;
@@ -35,7 +35,7 @@ type KoreksiStok = {
   Nomor: string;
   Tanggal: string;
   Gudang: string;
-  Tipe: number;
+  Tipe_Nama: string;
   Nama: string | null;
   Keterangan: string;
   Detail?: DetailKoreksi[];
@@ -91,14 +91,13 @@ const pickArray = (v: any) => {
   return [];
 };
 
-const typeLabel = (t: number) =>
-  t === 100 ? 'Terima' : t === 200 ? 'Keluar' : t === 300 ? 'Sisa Produksi' : String(t ?? '-');
-
 export default function KoreksiStokViewScreen({ navigation }: any) {
   const [data, setData] = useState<KoreksiStok[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const [startDate, setStartDate] = useState(() => toISO(new Date(Date.now() - 30 * 86400000)));
+  const [startDate, setStartDate] = useState(() =>
+    toISO(new Date(Date.now() - 30 * 86400000)),
+  );
   const [endDate, setEndDate] = useState(() => toISO(new Date()));
 
   const [picker, setPicker] = useState<'start' | 'end' | null>(null);
@@ -141,7 +140,10 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
   const [barcodeLoading, setBarcodeLoading] = useState(false);
   const [barcodeItems, setBarcodeItems] = useState<BarcodeItem[]>([]);
 
-  const selectedItem = useMemo(() => data.find(x => x.Nomor === selected) || null, [data, selected]);
+  const selectedItem = useMemo(
+    () => data.find(x => x.Nomor === selected) || null,
+    [data, selected],
+  );
   const hasSelected = !!selectedItem;
 
   const fetchData = async () => {
@@ -169,7 +171,9 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
       const detail = pickArray(res?.data) as DetailKoreksi[];
 
       setData(prev =>
-        prev.map(row => (row.Nomor === nomor ? { ...row, Detail: detail } : row)),
+        prev.map(row =>
+          row.Nomor === nomor ? { ...row, Detail: detail } : row,
+        ),
       );
     } catch (e) {
       console.log(e);
@@ -206,7 +210,8 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
     try {
       await loadDetail(selectedItem.Nomor);
 
-      const master = ((): KoreksiStok | undefined => data.find(x => x.Nomor === selectedItem.Nomor))();
+      const master = ((): KoreksiStok | undefined =>
+        data.find(x => x.Nomor === selectedItem.Nomor))();
       const details = master?.Detail || [];
 
       if (!details.length) {
@@ -263,11 +268,13 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
         >
           <View style={styles.rowTop}>
             <Text style={styles.nomor}>{item.Nomor}</Text>
-            <Text style={styles.tanggal}>{formatTanggalDDMMYYYY(item.Tanggal)}</Text>
+            <Text style={styles.tanggal}>
+              {formatTanggalDDMMYYYY(item.Tanggal)}
+            </Text>
           </View>
 
           <Text style={styles.meta}>Gudang: {item.Gudang}</Text>
-          <Text style={styles.meta}>Tipe: {typeLabel(item.Tipe)}</Text>
+          <Text style={styles.meta}>Tipe: {item.Tipe_Nama}</Text>
 
           <Text style={styles.keterangan} numberOfLines={2}>
             Ket: {item.Keterangan || '-'}
@@ -283,7 +290,9 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
             <Text style={styles.detailTitle}>Rincian Barang:</Text>
 
             {!item.Detail?.length ? (
-              <Text style={styles.emptyDetail}>Tidak ada detail / memuat...</Text>
+              <Text style={styles.emptyDetail}>
+                Tidak ada detail / memuat...
+              </Text>
             ) : (
               item.Detail.map((d, idx) => (
                 <View key={`${d.Kode}-${idx}`} style={styles.detailRow}>
@@ -297,7 +306,8 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
                     </Text>
 
                     <Text style={styles.detailSmall}>
-                      Ukuran: {Number(d.Panjang || 0)}m x {Number(d.Lebar || 0)}m
+                      Ukuran: {Number(d.Panjang || 0)}m x {Number(d.Lebar || 0)}
+                      m
                     </Text>
                   </View>
 
@@ -392,7 +402,9 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
             activeOpacity={0.85}
             disabled={loading}
           >
-            <Text style={styles.dateValue}>{formatTanggalDDMMYYYY(startDate)}</Text>
+            <Text style={styles.dateValue}>
+              {formatTanggalDDMMYYYY(startDate)}
+            </Text>
           </TouchableOpacity>
 
           <Text style={styles.sep}>s/d</Text>
@@ -403,7 +415,9 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
             activeOpacity={0.85}
             disabled={loading}
           >
-            <Text style={styles.dateValue}>{formatTanggalDDMMYYYY(endDate)}</Text>
+            <Text style={styles.dateValue}>
+              {formatTanggalDDMMYYYY(endDate)}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -435,7 +449,9 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
           <View style={styles.dpCard}>
             <View style={styles.dpHeader}>
               <Text style={styles.dpTitle}>
-                {picker === 'start' ? 'Pilih Tanggal Mulai' : 'Pilih Tanggal Akhir'}
+                {picker === 'start'
+                  ? 'Pilih Tanggal Mulai'
+                  : 'Pilih Tanggal Akhir'}
               </Text>
               <Text style={styles.dpSubtitle}>
                 {formatTanggalDDMMYYYY(toISO(pickerTemp))}
@@ -443,7 +459,11 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
             </View>
 
             <View style={styles.dpBody}>
-              <DatePicker date={pickerTemp} onDateChange={setPickerTemp} mode="date" />
+              <DatePicker
+                date={pickerTemp}
+                onDateChange={setPickerTemp}
+                mode="date"
+              />
             </View>
 
             <View style={styles.dpFooter}>
@@ -473,7 +493,14 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
         renderItem={renderRow}
         contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
         ListEmptyComponent={
-          <Text style={{ textAlign: 'center', marginTop: 24, color: '#6B7280', fontWeight: '700' }}>
+          <Text
+            style={{
+              textAlign: 'center',
+              marginTop: 24,
+              color: '#6B7280',
+              fontWeight: '700',
+            }}
+          >
             {loading ? 'Memuat...' : 'Data kosong'}
           </Text>
         }
@@ -494,11 +521,15 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
             >
               <MaterialIcons name="close" size={24} color="#111827" />
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>Preview Barcode ({barcodeItems.length})</Text>
+            <Text style={styles.modalTitle}>
+              Preview Barcode ({barcodeItems.length})
+            </Text>
             <View style={{ width: 36 }} />
           </View>
 
-          <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }}>
+          <ScrollView
+            contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
+          >
             {barcodeItems.map((it, idx) => (
               <View key={`${it.qrValue}-${idx}`} style={styles.labelBox}>
                 <View style={styles.labelTop}>
@@ -532,7 +563,9 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
         message="Yakin ingin menghapus dokumen ini?"
         detail={
           selectedItem
-            ? `${selectedItem.Nomor}\n${selectedItem.Gudang}\n${formatTanggalDDMMYYYY(selectedItem.Tanggal)}`
+            ? `${selectedItem.Nomor}\n${
+                selectedItem.Gudang
+              }\n${formatTanggalDDMMYYYY(selectedItem.Tanggal)}`
             : ''
         }
         cancelText="Batal"
@@ -554,7 +587,8 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
           } catch (e: any) {
             toast.error(
               'Gagal',
-              'Hapus data gagal: ' + (e?.response?.data?.message || e?.message || 'Server Error'),
+              'Hapus data gagal: ' +
+                (e?.response?.data?.message || e?.message || 'Server Error'),
             );
           } finally {
             setConfirmLoading(false);
@@ -564,7 +598,6 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
     </View>
   );
 }
-
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F5F5F5' },
@@ -636,7 +669,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 12,
   },
-  refreshText: { color: '#fff', fontWeight: '900', fontSize: 13, marginLeft: 8 },
+  refreshText: {
+    color: '#fff',
+    fontWeight: '900',
+    fontSize: 13,
+    marginLeft: 8,
+  },
 
   card: {
     backgroundColor: 'white',
@@ -692,7 +730,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
-  modalIconBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+  modalIconBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+  },
   modalTitle: { fontWeight: '900', color: '#111827' },
 
   labelBox: {
@@ -718,18 +762,64 @@ const styles = StyleSheet.create({
   qrValueText: { fontWeight: '900', color: '#111827' },
   dimText: { marginTop: 4, color: '#374151', fontWeight: '800', fontSize: 12 },
 
-  labelDivider: { borderTopWidth: 1, borderTopColor: '#111827', borderStyle: 'dashed', marginVertical: 10 },
+  labelDivider: {
+    borderTopWidth: 1,
+    borderTopColor: '#111827',
+    borderStyle: 'dashed',
+    marginVertical: 10,
+  },
   namaBahan: { textAlign: 'center', fontWeight: '900', color: '#111827' },
 
-  dpBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 16 },
-  dpCard: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#E5E7EB' },
-  dpHeader: { paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+  dpBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  dpCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  dpHeader: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
   dpTitle: { fontWeight: '900', color: '#111827', fontSize: 14 },
-  dpSubtitle: { marginTop: 6, fontWeight: '900', color: '#3F51B5', fontSize: 13 },
-  dpBody: { paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
-  dpFooter: { flexDirection: 'row', padding: 12, borderTopWidth: 1, borderTopColor: '#E5E7EB' },
-  dpBtn: { flex: 1, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  dpBtnGhost: { backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#E5E7EB', marginRight: 10 },
+  dpSubtitle: {
+    marginTop: 6,
+    fontWeight: '900',
+    color: '#3F51B5',
+    fontSize: 13,
+  },
+  dpBody: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dpFooter: {
+    flexDirection: 'row',
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  dpBtn: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dpBtnGhost: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginRight: 10,
+  },
   dpBtnGhostText: { fontWeight: '900', color: '#111827' },
   dpBtnPrimary: { backgroundColor: '#3F51B5' },
   dpBtnPrimaryText: { fontWeight: '900', color: '#fff' },

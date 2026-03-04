@@ -28,9 +28,9 @@ import {
   useCodeScanner,
 } from 'react-native-vision-camera';
 
-import api from '../src/api/api.services';
-import { toast } from '../components/toastComponent';
-import ConfirmDialog from '../components/confirmComponent';
+import api from '../api/api.services';
+import { toast } from '../../components/toastComponent';
+import ConfirmDialog from '../../components/confirmComponent';
 
 type GudangLookup = { Kode: string; Nama: string };
 
@@ -237,8 +237,8 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
         'Gagal',
         String(
           e?.response?.data?.message ||
-            e?.message ||
-            'Gagal load lookup gudang',
+          e?.message ||
+          'Gagal load lookup gudang',
         ),
       );
       setListGudang([]);
@@ -374,8 +374,8 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
           'Gagal',
           String(
             err?.response?.data?.message ||
-              err?.message ||
-              'Gagal mengambil data barcode.',
+            err?.message ||
+            'Gagal mengambil data barcode.',
           ),
         );
       }
@@ -512,9 +512,9 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
         'Gagal',
         String(
           e?.response?.data?.error ||
-            e?.response?.data?.message ||
-            e?.message ||
-            'Terjadi kesalahan saat menyimpan.',
+          e?.response?.data?.message ||
+          e?.message ||
+          'Terjadi kesalahan saat menyimpan.',
         ),
       );
     } finally {

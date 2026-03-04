@@ -24,9 +24,9 @@ import {
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import QRCode from 'react-native-qrcode-svg';
 
-import api from '../src/api/api.services';
-import { toast } from '../components/toastComponent';
-import ConfirmDialog from '../components/confirmComponent';
+import api from '../api/api.services';
+import { toast } from '../../components/toastComponent';
+import ConfirmDialog from '../../components/confirmComponent';
 
 type DetailItem = {
   __id: string;
@@ -89,6 +89,21 @@ const pickArray = (data: any): any[] => {
 };
 
 const fixNegZero = (n: number) => (Object.is(n, -0) ? 0 : n);
+
+const formatDateDDMMYYYY = (d = new Date()) => {
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+};
+
+const toApiDate = (value: string) => {
+  const v = String(value || '').trim();
+  const m = v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return v;
+  const [, dd, mm, yyyy] = m;
+  return `${yyyy}-${mm}-${dd}`;
+};
 
 function SelectModal<T>(props: {
   visible: boolean;
@@ -182,10 +197,15 @@ function StockSearchModal(props: {
       toast.warn('Validasi', 'Pilih gudang terlebih dahulu');
       return;
     }
+
+    const selectedGudangKode = String(gudangKode || '').trim();
     setLoading(true);
     try {
-      const res = await api.get('/master/bahan/mmt', {
-        params: { gudangKode, tanggal, _ts: Date.now() },
+      const res = await api.get('/mmt/koreksi-stok/stok', {
+        params: {
+          gudangKode: selectedGudangKode,
+          tanggal: toApiDate(tanggal),
+        },
       });
 
       const raw = pickArray(res?.data) as StockApiItem[];
@@ -268,7 +288,7 @@ function StockSearchModal(props: {
               {loading ? (
                 <ActivityIndicator />
               ) : (
-                <Text style={styles.secondaryBtnText}>Ambil Ulang Stok</Text>
+                <Text style={styles.secondaryBtnText}>Refresh</Text>
               )}
             </TouchableOpacity>
 
@@ -343,7 +363,7 @@ function StockSearchModal(props: {
 
 export default function FormKoreksiStokScreen({ navigation }: any) {
   const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const loading = false;
   const [headerCollapsed, setHeaderCollapsed] = useState<boolean>(false);
 
   const LIST_TYPE_KOR: TypeKorLookup[] = useMemo(
@@ -362,7 +382,7 @@ export default function FormKoreksiStokScreen({ navigation }: any) {
 
   const [header, setHeader] = useState<MasterHeader>({
     Nomor: 'AUTO',
-    Tanggal: new Date().toISOString().slice(0, 10),
+    Tanggal: formatDateDDMMYYYY(),
     GudangKode: 'WH-16',
     GudangNama: 'GUDANG UTAMA MMT',
     TypeKor: 100,
@@ -720,80 +740,6 @@ export default function FormKoreksiStokScreen({ navigation }: any) {
     [currentDetailIndex, ensureEditableIndex, applyStockToRow],
   );
 
-  const loadAllStockFromGudang = useCallback(async () => {
-    if (!header.GudangKode)
-      return toast.warn('Validasi', 'Pilih gudang terlebih dahulu');
-    setLoading(true);
-    try {
-      const res = await api.get('/mmt/koreksi-stok/stok', {
-        params: {
-          gudangKode: header.GudangKode,
-          tanggal: header.Tanggal,
-          _ts: Date.now(),
-        },
-      });
-
-      const dataStok = pickArray(res?.data);
-      if (!dataStok.length) {
-        toast.warn('Info', 'Tidak ada data stok ditemukan');
-        return;
-      }
-
-      const mapped: DetailItem[] = dataStok.map((item: any) => {
-        const system = num(item?.Stok ?? 0);
-        const harga = num(item?.HRGBELI ?? 0);
-        const qty = 0 - system;
-        const nilai = qty * harga;
-
-        return {
-          __id: String(item?.Kode ?? makeId()),
-          SKU: String(item?.Kode ?? ''),
-          NamaBarang: String(item?.Nama ?? ''),
-          Satuan: String(item?.Satuan ?? ''),
-          Panjang: num(item?.Panjang ?? 0),
-          Lebar: num(item?.Lebar ?? 0),
-          Expired: null,
-          System: system,
-          Fisik: 0,
-          Qty: fixNegZero(qty),
-          Harga: harga,
-          Nilai: fixNegZero(nilai),
-        };
-      });
-
-      draftFisikRef.current.clear();
-      draftPanjangRef.current.clear();
-      draftLebarRef.current.clear();
-
-      mapped.push({
-        __id: makeId(),
-        SKU: '',
-        NamaBarang: '',
-        Satuan: '',
-        Panjang: 0,
-        Lebar: 0,
-        Expired: null,
-        System: 0,
-        Fisik: 0,
-        Qty: 0,
-        Harga: 0,
-        Nilai: 0,
-      });
-
-      setDetails(mapped);
-      setHeaderCollapsed(true);
-      toast.success('Sukses', 'Stok gudang dimuat');
-    } catch (e: any) {
-      toast.error(
-        'Gagal',
-        'Gagal memuat stok: ' +
-          String(e?.response?.data?.message || e?.message || 'Unknown'),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [header.GudangKode, header.Tanggal]);
-
   const totalNilai = useMemo(
     () => details.reduce((a, b) => a + (b.Nilai || 0), 0),
     [details],
@@ -824,6 +770,7 @@ export default function FormKoreksiStokScreen({ navigation }: any) {
       const payload = {
         header: {
           ...header,
+          Tanggal: toApiDate(header.Tanggal),
           TypeName: typeName,
         },
         details: validDetails.map(({ __id, ...rest }) => rest),
@@ -1091,7 +1038,7 @@ export default function FormKoreksiStokScreen({ navigation }: any) {
               <TextInput
                 style={styles.input}
                 value={header.Tanggal}
-                placeholder="YYYY-MM-DD"
+                placeholder="DD/MM/YYYY"
                 placeholderTextColor="#9AA0A6"
                 editable={false}
               />
@@ -1156,34 +1103,6 @@ export default function FormKoreksiStokScreen({ navigation }: any) {
               placeholderTextColor="#9AA0A6"
               onChangeText={v => setHeader(p => ({ ...p, Keterangan: v }))}
             />
-          </View>
-
-          {/* Tombol bulk opsional */}
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-            <TouchableOpacity
-              style={[
-                styles.secondaryBtn,
-                { flex: 1 },
-                (saving || loading) && { opacity: 0.6 },
-              ]}
-              onPress={loadAllStockFromGudang}
-              disabled={saving || loading}
-            >
-              {loading ? (
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 10,
-                  }}
-                >
-                  <ActivityIndicator />
-                  <Text style={styles.secondaryBtnText}>Memuat...</Text>
-                </View>
-              ) : (
-                <Text style={styles.secondaryBtnText}>Ambil Semua Stok</Text>
-              )}
-            </TouchableOpacity>
           </View>
 
           {loadingLookup && (

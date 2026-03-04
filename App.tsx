@@ -4,12 +4,14 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import LoginScreen from './src/LoginScreen';
-import HomeScreen from './src/HomeScreen';
-import RealisasiProduksiScreen from './src/RealisasiProduksiScreen';
-import KoreksiStokViewScreen from './src/KoreksiStokViewScreen';
-import FormKoreksiStokScreen from './src/FormKoreksiStokScreen';
-import DalamPengembanganScreen from './src/DalamPengembanganScreen';
+import LoginScreen from './src/screen/LoginScreen';
+import HomeScreen from './src/screen/HomeScreen';
+import RealisasiProduksiScreen from './src/screen/RealisasiProduksiScreen';
+import KoreksiStokViewScreen from './src/screen/KoreksiStokViewScreen';
+import FormKoreksiStokScreen from './src/screen/FormKoreksiStokScreen';
+import LhkFinishingViewScreen from './src/screen/LhkFinishingViewScreen';
+import FormLhkFinishingScreen from './src/screen/FormLhkFinishingScreen';
+import DalamPengembanganScreen from './src/screen/DalamPengembanganScreen';
 import FlashMessage from 'react-native-flash-message';
 
 export type RootStackParamList = {
@@ -17,6 +19,8 @@ export type RootStackParamList = {
   Home: undefined;
   RealisasiProduksi: undefined;
   KoreksiStokView: undefined;
+  LhkFinishing: undefined;
+  FormLhkFinishing: undefined;
   FormKoreksiStok: undefined;
   DalamPengembangan: {
     featureName?: string;
@@ -50,6 +54,24 @@ export default function App(): React.JSX.Element {
             options={{
               headerShown: true,
               title: 'Koreksi Stok',
+            }}
+          />
+
+          <Stack.Screen
+            name="LhkFinishing"
+            component={LhkFinishingViewScreen}
+            options={{
+              headerShown: true,
+              title: 'LHK Finishing MMT',
+            }}
+          />
+
+          <Stack.Screen
+            name="FormLhkFinishing"
+            component={FormLhkFinishingScreen}
+            options={{
+              headerShown: true,
+              title: 'Input LHK Finishing',
             }}
           />
 

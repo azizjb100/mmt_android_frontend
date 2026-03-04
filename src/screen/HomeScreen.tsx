@@ -8,10 +8,13 @@ import {
   ScrollView,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../App';
+import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
-type HomeDirectScreen = 'RealisasiProduksi' | 'KoreksiStokView';
+type HomeDirectScreen =
+  | 'RealisasiProduksi'
+  | 'KoreksiStokView'
+  | 'LhkFinishing';
 
 type MenuItem = {
   id: number;
@@ -27,22 +30,22 @@ export default function HomeScreen({ navigation }: Props) {
       id: 1,
       title: 'Realisasi Produksi',
       color: '#1A237E',
-      short: 'PROD',
+      short: 'RP',
       screen: 'RealisasiProduksi',
     },
     {
       id: 2,
-      title: 'Stok Opname',
+      title: 'Koreksi Stok',
       color: '#1A237E',
-      short: 'SO',
+      short: 'KS',
       screen: 'KoreksiStokView',
     },
     {
       id: 3,
-      title: 'Daftar Stok',
+      title: 'LHK Finishing',
       color: '#1A237E',
-      short: 'STOK',
-      screen: null,
+      short: 'LHK',
+      screen: 'LhkFinishing',
     },
     {
       id: 4,
@@ -79,7 +82,7 @@ export default function HomeScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Dashboard Gudang</Text>
+        <Text style={styles.headerTitle}>DASHBOARD MMT</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.container}>
@@ -127,30 +130,43 @@ const styles = StyleSheet.create({
   headerTitle: { color: 'white', fontSize: 20, fontWeight: 'bold' },
   container: { paddingVertical: 20 },
   grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-start',
+    flexDirection: 'column',
+    paddingHorizontal: 16,
   },
-  menuItem: { width: '33.33%', alignItems: 'center', marginBottom: 25 },
+  menuItem: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+  },
   iconContainer: {
-    width: 75,
-    height: 75,
-    borderRadius: 20,
+    width: 54,
+    height: 54,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 5,
+    elevation: 3,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
   },
   iconText: { color: 'white', fontWeight: 'bold', fontSize: 14 },
   menuText: {
-    marginTop: 10,
-    textAlign: 'center',
-    fontSize: 12,
+    marginLeft: 14,
+    textAlign: 'left',
+    fontSize: 15,
     fontWeight: '600',
     color: '#333',
-    paddingHorizontal: 5,
+    flex: 1,
   },
 });
