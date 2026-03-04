@@ -210,6 +210,7 @@ export default function FormLhkFinishingScreen({ navigation }: Props) {
                   placeholder="Panjang"
                   placeholderTextColor="#9CA3AF"
                   style={styles.inputWithSuffix}
+                  editable={false}
                 />
                 <Text style={styles.suffixText}>m</Text>
               </View>
@@ -222,6 +223,7 @@ export default function FormLhkFinishingScreen({ navigation }: Props) {
                   placeholder="Lebar"
                   placeholderTextColor="#9CA3AF"
                   style={styles.inputWithSuffix}
+                  editable={false}
                 />
                 <Text style={styles.suffixText}>m</Text>
               </View>

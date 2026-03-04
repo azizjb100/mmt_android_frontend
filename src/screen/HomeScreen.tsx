@@ -6,9 +6,13 @@ import {
   TouchableOpacity,
   SafeAreaView,
   ScrollView,
+  Alert,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
+import { toast } from '../../components/toastComponent';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 type HomeDirectScreen =
@@ -25,6 +29,22 @@ type MenuItem = {
 };
 
 export default function HomeScreen({ navigation }: Props) {
+  const confirmLogout = () => {
+    Alert.alert('Konfirmasi Logout', 'Yakin ingin keluar dari aplikasi?', [
+      { text: 'Batal', style: 'cancel' },
+      { text: 'Logout', style: 'destructive', onPress: handleLogout },
+    ]);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await AsyncStorage.multiRemove(['userToken', 'userData']);
+      toast.success('Logout Berhasil');
+    } finally {
+      navigation.replace('Login');
+    }
+  };
+
   const menus: MenuItem[] = [
     {
       id: 1,
@@ -82,6 +102,9 @@ export default function HomeScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
+        <TouchableOpacity style={styles.logoutBtn} onPress={confirmLogout}>
+          <MaterialIcons name="logout" size={22} color="#FFFFFF" />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>DASHBOARD MMT</Text>
       </View>
 
@@ -126,6 +149,16 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
+  },
+  logoutBtn: {
+    position: 'absolute',
+    left: 12,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    zIndex: 2,
   },
   headerTitle: { color: 'white', fontSize: 20, fontWeight: 'bold' },
   container: { paddingVertical: 20 },

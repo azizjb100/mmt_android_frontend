@@ -5,10 +5,10 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { login } from '../store/authStore';
 import { useNavigation } from '@react-navigation/native';
+import { toast } from '../../components/toastComponent';
 
 const LoginScreen = () => {
   const navigation = useNavigation();
@@ -18,24 +18,33 @@ const LoginScreen = () => {
 
   const handleLogin = async () => {
     if (!username || !password) {
-      Alert.alert('Error', 'Username dan password wajib diisi');
+      toast.error('Error', 'Username dan password wajib diisi');
       return;
     }
 
-    setLoading(true);
-    const result = await login(username, password);
-    setLoading(false);
+    try {
+      setLoading(true);
+      const result = await login(username, password);
 
-    if (result.success) {
-      (navigation as any).replace('Home');
-    } else {
-      Alert.alert('Login Gagal', result.message);
+      if (result.success) {
+        toast.success(
+          'Login Berhasil',
+          'Selamat datang ' + (result.user?.name || username),
+        );
+        (navigation as any).replace('Home');
+      } else {
+        toast.error('Login Gagal', result.message || 'Login gagal');
+      }
+    } catch (error: any) {
+      toast.error('Error', error?.message || 'Terjadi kesalahan saat login');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Sistem Login</Text>
+      <Text style={styles.title}>Sistem MMT Login</Text>
 
       <TextInput
         style={styles.input}

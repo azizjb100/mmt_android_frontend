@@ -237,8 +237,8 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
         'Gagal',
         String(
           e?.response?.data?.message ||
-          e?.message ||
-          'Gagal load lookup gudang',
+            e?.message ||
+            'Gagal load lookup gudang',
         ),
       );
       setListGudang([]);
@@ -294,6 +294,15 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
   const totalScanned = useMemo(() => {
     // buat indikator cepat: berapa barcode terisi (tanpa qty)
     return details.filter(d => String(d.barcode || '').trim()).length;
+  }, [details]);
+
+  const isGudangAsalLocked = useMemo(() => {
+    return details.some(
+      d =>
+        !!String(d.barcode || '').trim() ||
+        !!String(d.sku || '').trim() ||
+        !!String(d.Nama_Bahan || '').trim(),
+    );
   }, [details]);
 
   const isFormValid = useMemo(() => {
@@ -374,8 +383,8 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
           'Gagal',
           String(
             err?.response?.data?.message ||
-            err?.message ||
-            'Gagal mengambil data barcode.',
+              err?.message ||
+              'Gagal mengambil data barcode.',
           ),
         );
       }
@@ -512,9 +521,9 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
         'Gagal',
         String(
           e?.response?.data?.error ||
-          e?.response?.data?.message ||
-          e?.message ||
-          'Terjadi kesalahan saat menyimpan.',
+            e?.response?.data?.message ||
+            e?.message ||
+            'Terjadi kesalahan saat menyimpan.',
         ),
       );
     } finally {
@@ -661,11 +670,14 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
                 <TouchableOpacity
                   onPress={() => setOpenGudangAsal(true)}
                   activeOpacity={0.85}
-                  disabled={saving}
+                  disabled={saving || isGudangAsalLocked}
                 >
                   <View pointerEvents="none">
                     <TextInput
-                      style={styles.input}
+                      style={[
+                        styles.input,
+                        (saving || isGudangAsalLocked) && styles.inputDisabled,
+                      ]}
                       value={header.gudangKode}
                       editable={false}
                     />
@@ -925,6 +937,10 @@ const styles = StyleSheet.create({
     color: '#111827',
     fontWeight: '800',
     textAlign: 'center',
+  },
+  inputDisabled: {
+    backgroundColor: '#F3F4F6',
+    color: '#6B7280',
   },
   subText: { color: MUTED, fontWeight: '700', marginTop: 6, fontSize: 12 },
   smallInfo: { marginTop: 10, color: MUTED, fontWeight: '700', fontSize: 12 },

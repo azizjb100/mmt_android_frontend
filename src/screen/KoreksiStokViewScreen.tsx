@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   FlatList,
-  Linking,
   Modal,
   ScrollView,
   ActivityIndicator,
@@ -188,16 +187,6 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
 
   const handleAdd = () => navigation.navigate('FormKoreksiStok');
 
-  const handlePrintSlip = async () => {
-    if (!selectedItem) return;
-
-    const url = `https://103.94.238.252:8003/print/koreksi-stok/${selectedItem.Nomor}`;
-    const can = await Linking.canOpenURL(url);
-    if (!can) return toast.error('Gagal', 'Tidak bisa membuka URL print.');
-
-    Linking.openURL(url);
-  };
-
   const handleDelete = () => {
     if (!selectedItem) return;
     setConfirmOpen(true);
@@ -364,21 +353,6 @@ export default function KoreksiStokViewScreen({ navigation }: any) {
           <Text style={styles.actionBtnText}>Barcode</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[
-            styles.actionBtn,
-            styles.btnInfo,
-            (!hasSelected || loading) && styles.btnDisabled,
-          ]}
-          onPress={handlePrintSlip}
-          disabled={!hasSelected || loading}
-          activeOpacity={0.85}
-        >
-          <MaterialIcons name="print" size={20} color="#fff" />
-          <Text style={styles.actionBtnText}>Slip</Text>
-        </TouchableOpacity>
-
-        {/* Hapus icon only */}
         <TouchableOpacity
           style={[
             styles.iconBtn,

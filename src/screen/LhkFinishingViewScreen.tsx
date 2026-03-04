@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Linking,
+  Modal,
   RefreshControl,
   StyleSheet,
   Text,
@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import DatePicker from 'react-native-date-picker';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import api from '../api/api.services';
@@ -118,8 +119,8 @@ export default function LhkFinishingViewScreen({ navigation }: any) {
     setPickerTemp(parseDisplayDate(mode === 'start' ? startDate : endDate));
   };
 
-  const applyPickedDate = (date: Date) => {
-    const picked = toDisplayDate(date);
+  const applyPickedDate = () => {
+    const picked = toDisplayDate(pickerTemp);
     const mode = pickerMode;
     setPickerMode(null);
 
@@ -192,21 +193,6 @@ export default function LhkFinishingViewScreen({ navigation }: any) {
     setExpandedNomor(next);
     if (next) {
       await loadDetail(next);
-    }
-  };
-
-  const handlePrint = async (nomor: string) => {
-    const url = `https://103.94.238.252:8003/print/lhk-finishing/${nomor}`;
-    try {
-      const can = await Linking.canOpenURL(url);
-      if (!can) {
-        toast.error('Gagal', 'Tidak bisa membuka URL cetak.');
-        return;
-      }
-
-      await Linking.openURL(url);
-    } catch {
-      toast.error('Gagal', 'Terjadi kesalahan saat membuka URL cetak.');
     }
   };
 
@@ -298,7 +284,7 @@ export default function LhkFinishingViewScreen({ navigation }: any) {
 
         {isExpanded && (
           <View style={styles.detailSection}>
-            <View style={styles.actionRow}>
+            {/* <View style={styles.actionRow}>
               <TouchableOpacity
                 style={styles.secondaryBtn}
                 onPress={() => handlePrint(item.Nomor)}
@@ -314,7 +300,7 @@ export default function LhkFinishingViewScreen({ navigation }: any) {
               >
                 <Text style={styles.secondaryBtnText}>Export Detail</Text>
               </TouchableOpacity>
-            </View>
+            </View> */}
 
             {renderDetail(item.Nomor)}
           </View>
@@ -331,48 +317,56 @@ export default function LhkFinishingViewScreen({ navigation }: any) {
       ]}
     >
       <View style={styles.filterCard}>
-        <Text style={styles.filterTitle}>Periode</Text>
-
-        <View style={styles.inputRow}>
-          <View style={styles.inputWrap}>
-            <TouchableOpacity
-              style={styles.input}
-              activeOpacity={0.85}
-              onPress={() => openDatePicker('start')}
-            >
-              <Text style={styles.inputValue}>{startDate || 'DD/MM/YYYY'}</Text>
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.tengah}>s/d</Text>
-          <View style={styles.inputWrap}>
-            <TouchableOpacity
-              style={styles.input}
-              activeOpacity={0.85}
-              onPress={() => openDatePicker('end')}
-            >
-              <Text style={styles.inputValue}>{endDate || 'DD/MM/YYYY'}</Text>
-            </TouchableOpacity>
-          </View>
+        {/* Header actions */}
+        <View style={styles.actions}>
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.btnSuccess, loading && styles.btnDisabled]}
+            onPress={() => navigation.navigate('FormLhkFinishing')}
+            disabled={loading}
+            activeOpacity={0.85}
+          >
+            <MaterialIcons name="add" size={20} color="#fff" />
+            <Text style={styles.actionBtnText}>Tambah</Text>
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.filterActionRow}>
-          <View style={styles.filterButtonsLeft}>
-            <TouchableOpacity
-              style={styles.addBtn}
-              onPress={() => navigation.navigate('FormLhkFinishing')}
-            >
-              <Text style={styles.addBtnText}>+ Baru</Text>
-            </TouchableOpacity>
+        <View style={styles.dateRow}>
+          <TouchableOpacity
+            style={styles.dateField}
+            activeOpacity={0.85}
+            onPress={() => openDatePicker('start')}
+            disabled={loading}
+          >
+            <Text style={styles.dateValue}>{startDate}</Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.refreshBtn}
-              onPress={() => fetchHeaders()}
-            >
-              <Text style={styles.refreshBtnText}>Refresh</Text>
-            </TouchableOpacity>
-          </View>
+          <Text style={styles.sep}>s/d</Text>
+
+          <TouchableOpacity
+            style={styles.dateField}
+            activeOpacity={0.85}
+            onPress={() => openDatePicker('end')}
+            disabled={loading}
+          >
+            <Text style={styles.dateValue}>{endDate}</Text>
+          </TouchableOpacity>
         </View>
+
+        <TouchableOpacity
+          style={[styles.refreshWideBtn, loading && styles.btnDisabled]}
+          onPress={() => fetchHeaders()}
+          disabled={loading}
+          activeOpacity={0.85}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <MaterialIcons name="refresh" size={18} color="#fff" />
+              <Text style={styles.refreshText}>Refresh</Text>
+            </>
+          )}
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -399,15 +393,51 @@ export default function LhkFinishingViewScreen({ navigation }: any) {
         />
       )}
 
-      <DatePicker
-        modal
-        open={pickerMode !== null}
-        date={pickerTemp}
-        mode="date"
-        title="Pilih Tanggal"
-        onConfirm={date => applyPickedDate(date)}
-        onCancel={() => setPickerMode(null)}
-      />
+      <Modal
+        visible={pickerMode !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPickerMode(null)}
+      >
+        <View style={styles.dpBackdrop}>
+          <View style={styles.dpCard}>
+            <View style={styles.dpHeader}>
+              <Text style={styles.dpTitle}>
+                {pickerMode === 'start'
+                  ? 'Pilih Tanggal Mulai'
+                  : 'Pilih Tanggal Akhir'}
+              </Text>
+              <Text style={styles.dpSubtitle}>{toDisplayDate(pickerTemp)}</Text>
+            </View>
+
+            <View style={styles.dpBody}>
+              <DatePicker
+                date={pickerTemp}
+                onDateChange={setPickerTemp}
+                mode="date"
+              />
+            </View>
+
+            <View style={styles.dpFooter}>
+              <TouchableOpacity
+                style={[styles.dpBtn, styles.dpBtnGhost]}
+                onPress={() => setPickerMode(null)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.dpBtnGhostText}>Batal</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.dpBtn, styles.dpBtnPrimary]}
+                onPress={applyPickedDate}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.dpBtnPrimaryText}>Pilih</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -415,65 +445,67 @@ export default function LhkFinishingViewScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F5F5F5' },
 
-  filterCard: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 14,
-    marginTop: 12,
-    marginBottom: 8,
-    borderRadius: 12,
-    padding: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 2,
-  },
-  filterTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1A237E',
-    marginBottom: 8,
-  },
-  inputRow: { flexDirection: 'row', gap: 10 },
-  inputWrap: { flex: 1 },
-  inputLabel: { fontSize: 12, color: '#6B7280', marginBottom: 4 },
-  input: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    height: 40,
-    paddingHorizontal: 10,
-    backgroundColor: '#FFF',
+  actions: { flexDirection: 'row', paddingBottom: 12 },
+  btnDisabled: { opacity: 0.35 },
+  actionBtn: {
+    height: 44,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    marginRight: 10,
   },
-  inputValue: { color: '#111827', fontSize: 13 },
-  filterActionRow: {
+  actionBtnText: {
+    color: '#fff',
+    fontWeight: '900',
+    fontSize: 12,
+    marginLeft: 8,
+  },
+  btnSuccess: { backgroundColor: '#16A34A' },
+
+  filterCard: {
+    backgroundColor: 'white',
+    marginHorizontal: 12,
+    marginTop: 12,
+    marginBottom: 6,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dateField: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+  },
+  dateValue: { fontWeight: '900', color: '#111827', textAlign: 'center' },
+  sep: { marginHorizontal: 10, color: '#9CA3AF', fontWeight: '900' },
+
+  refreshWideBtn: {
     marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  filterButtonsLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  addBtn: {
-    backgroundColor: '#16A34A',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  addBtnText: { color: '#FFF', fontWeight: '700', fontSize: 12 },
-  refreshBtn: {
+    height: 40,
+    borderRadius: 12,
     backgroundColor: '#3F51B5',
-    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 8,
   },
-  refreshBtnText: { color: '#FFF', fontWeight: '700', fontSize: 12 },
-  legend: { color: '#6B7280', fontSize: 11 },
-  legendBold: { fontWeight: '700', color: '#B91C1C' },
+  refreshText: {
+    color: '#fff',
+    fontWeight: '900',
+    fontSize: 13,
+    marginLeft: 8,
+  },
 
   centerLoading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   centerLoadingText: { marginTop: 8, color: '#6B7280' },
@@ -556,10 +588,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
     borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
     marginRight: 6,
-    marginBottom: 6,
+    marginBottom: 10,
   },
   emptyDetail: {
     fontSize: 12,
@@ -575,11 +607,57 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
-  tengah: {
-    alignSelf: 'center',
-    color: '#6B7280',
-    width: 30,
-    textAlign: 'center',
-    fontSize: 12,
+  dpBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: 16,
   },
+  dpCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    overflow: 'hidden',
+  },
+  dpHeader: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  dpTitle: { fontWeight: '900', color: '#111827', fontSize: 14 },
+  dpSubtitle: {
+    marginTop: 6,
+    fontWeight: '900',
+    color: '#3F51B5',
+    fontSize: 13,
+  },
+  dpBody: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dpFooter: {
+    flexDirection: 'row',
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  dpBtn: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dpBtnGhost: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginRight: 10,
+  },
+  dpBtnGhostText: { fontWeight: '900', color: '#111827' },
+  dpBtnPrimary: { backgroundColor: '#3F51B5' },
+  dpBtnPrimaryText: { fontWeight: '900', color: '#fff' },
 });
