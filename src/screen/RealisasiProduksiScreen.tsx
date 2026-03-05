@@ -69,7 +69,6 @@ const DANGER = '#DC2626';
 
 const FRAME_W = 260;
 const FRAME_H = 160;
-const SCAN_IDLE_MS = 180;
 
 const makeId = () => `row_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 const num = (v: any) => {
@@ -163,7 +162,6 @@ function SelectModal<T>(props: {
 export default function RealisasiProduksiScreen({ navigation }: any) {
   const [saving, setSaving] = useState(false);
   const hiddenScanInputRef = useRef<TextInput | null>(null);
-  const hiddenScanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [hiddenScanBuffer, setHiddenScanBuffer] = useState('');
 
   // scanner
@@ -431,25 +429,9 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
   const onHiddenScannerChange = useCallback(
     (text: string) => {
       setHiddenScanBuffer(text);
-
-      if (hiddenScanTimerRef.current) {
-        clearTimeout(hiddenScanTimerRef.current);
-      }
-
-      hiddenScanTimerRef.current = setTimeout(() => {
-        flushHiddenScannerBuffer(text);
-      }, SCAN_IDLE_MS);
     },
-    [flushHiddenScannerBuffer],
+    [],
   );
-
-  useEffect(() => {
-    return () => {
-      if (hiddenScanTimerRef.current) {
-        clearTimeout(hiddenScanTimerRef.current);
-      }
-    };
-  }, []);
 
   const codeScanner = useCodeScanner({
     codeTypes: ['code-128', 'ean-13', 'qr'],
@@ -611,7 +593,7 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
           style={styles.hiddenScannerInput}
           value={hiddenScanBuffer}
           onChangeText={onHiddenScannerChange}
-          onSubmitEditing={() => flushHiddenScannerBuffer()}
+          onSubmitEditing={e => flushHiddenScannerBuffer(e.nativeEvent.text)}
           autoFocus
           blurOnSubmit={false}
           contextMenuHidden
