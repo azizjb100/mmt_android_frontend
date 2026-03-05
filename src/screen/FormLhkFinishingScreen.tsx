@@ -1,5 +1,11 @@
 /* eslint-disable react-native/no-inline-styles */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -8,6 +14,7 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  StatusBar,
   Text,
   TextInput,
   TouchableOpacity,
@@ -16,6 +23,12 @@ import {
 import DatePicker from 'react-native-date-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import {
+  Camera,
+  useCameraDevice,
+  useCodeScanner,
+} from 'react-native-vision-camera';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 import api from '../api/api.services';
 import type { RootStackParamList } from '../../App';
@@ -32,6 +45,10 @@ type SpkItem = {
 };
 
 const JENIS_OPTIONS = ['POTONG', 'SEAMING', 'MATA AYAM', 'COLY', 'LAIN-LAIN'];
+const PRIMARY = '#3F51B5';
+
+const FRAME_W = 260;
+const FRAME_H = 160;
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 const formatDate = (d: Date) =>
@@ -88,6 +105,8 @@ const mapSpk = (item: any): SpkItem => ({
 });
 
 export default function FormLhkFinishingScreen({ navigation }: Props) {
+  const hiddenScanInputRef = useRef<TextInput | null>(null);
+
   const [jenis, setJenis] = useState('');
   const [tanggal, setTanggal] = useState<Date>(new Date());
   const [spk, setSpk] = useState<SpkItem | null>(null);
@@ -105,6 +124,10 @@ export default function FormLhkFinishingScreen({ navigation }: Props) {
   const [spkKeyword, setSpkKeyword] = useState('');
   const [spkItems, setSpkItems] = useState<SpkItem[]>([]);
   const [spkLoading, setSpkLoading] = useState(false);
+  const [hiddenScanBuffer, setHiddenScanBuffer] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [hasPermission, setHasPermission] = useState(false);
+  const device = useCameraDevice('back');
 
   const canPreview = useMemo(
     () => !!jenis && !!spk && !!panjang && !!lebar && !!qty,
@@ -114,7 +137,21 @@ export default function FormLhkFinishingScreen({ navigation }: Props) {
   const isJenisInvalid = submitAttempted && !jenis;
   const isSpkInvalid = submitAttempted && !spk;
 
-  const fetchSpk = async (keyword = '') => {
+  const focusHiddenScanInput = useCallback(() => {
+    setTimeout(() => hiddenScanInputRef.current?.focus(), 50);
+  }, []);
+
+  const applySelectedSpk = useCallback((item: SpkItem) => {
+    const parsed = parseUkuranText(item.ukuranRaw);
+    const p = item.panjang ?? parsed.p;
+    const l = item.lebar ?? parsed.l;
+
+    setSpk(item);
+    setPanjang(p !== undefined ? String(p) : '');
+    setLebar(l !== undefined ? String(l) : '');
+  }, []);
+
+  const fetchSpk = useCallback(async (keyword = ''): Promise<SpkItem[]> => {
     setSpkLoading(true);
     try {
       const res = await api.get('/mmt/SPK/lookup', {
@@ -126,6 +163,7 @@ export default function FormLhkFinishingScreen({ navigation }: Props) {
         .filter((x: SpkItem) => !!x.nomor);
 
       setSpkItems(mapped);
+      return mapped;
     } catch (e: any) {
       toast.error(
         'Gagal',
@@ -134,10 +172,83 @@ export default function FormLhkFinishingScreen({ navigation }: Props) {
         ),
       );
       setSpkItems([]);
+      return [];
     } finally {
       setSpkLoading(false);
     }
-  };
+  }, []);
+
+  const resolveSpkFromScanner = useCallback(
+    async (rawValue: string) => {
+      const keyword = String(rawValue || '')
+        .replace(/[\r\n]/g, '')
+        .trim();
+      setHiddenScanBuffer('');
+      if (!keyword) {
+        focusHiddenScanInput();
+        return;
+      }
+
+      setSpkKeyword(keyword);
+      const items = await fetchSpk(keyword);
+      if (!items.length) {
+        toast.warn('SPK', `SPK ${keyword} tidak ditemukan.`);
+        focusHiddenScanInput();
+        return;
+      }
+
+      const key = keyword.toLowerCase();
+      const selected =
+        items.find(it => it.nomor.toLowerCase() === key) ??
+        items.find(it => it.nomor.toLowerCase().includes(key)) ??
+        (items.length === 1 ? items[0] : null);
+
+      if (!selected) {
+        toast.warn('SPK', `SPK ${keyword} tidak unik, pilih manual.`);
+        setOpenSpk(true);
+        focusHiddenScanInput();
+        return;
+      }
+
+      applySelectedSpk(selected);
+      toast.success('Scan Berhasil', `SPK ${selected.nomor} terpilih.`);
+      focusHiddenScanInput();
+    },
+    [applySelectedSpk, fetchSpk, focusHiddenScanInput],
+  );
+
+  const flushHiddenScannerBuffer = useCallback(
+    (raw?: string) => {
+      const keyword = String(raw ?? hiddenScanBuffer)
+        .replace(/[\r\n]/g, '')
+        .trim();
+      setHiddenScanBuffer('');
+
+      if (!keyword) {
+        focusHiddenScanInput();
+        return;
+      }
+
+      resolveSpkFromScanner(keyword);
+    },
+    [focusHiddenScanInput, hiddenScanBuffer, resolveSpkFromScanner],
+  );
+
+  const onHiddenScannerChange = useCallback((text: string) => {
+    setHiddenScanBuffer(text);
+  }, []);
+
+  const codeScanner = useCodeScanner({
+    codeTypes: ['code-128', 'ean-13', 'qr'],
+    onCodeScanned: codes => {
+      if (!scannerOpen) return;
+      const value = codes?.[0]?.value;
+      if (!value) return;
+
+      setScannerOpen(false);
+      resolveSpkFromScanner(value);
+    },
+  });
 
   useEffect(() => {
     if (!openSpk) return;
@@ -145,12 +256,36 @@ export default function FormLhkFinishingScreen({ navigation }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openSpk]);
 
+  useEffect(() => {
+    (async () => {
+      const status = await Camera.requestCameraPermission();
+      setHasPermission(status === 'granted');
+    })();
+
+    focusHiddenScanInput();
+  }, [focusHiddenScanInput]);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
+        <TextInput
+          ref={hiddenScanInputRef}
+          value={hiddenScanBuffer}
+          onChangeText={onHiddenScannerChange}
+          onSubmitEditing={e => flushHiddenScannerBuffer(e.nativeEvent.text)}
+          autoFocus
+          blurOnSubmit={false}
+          autoCorrect={false}
+          autoCapitalize="none"
+          contextMenuHidden
+          caretHidden
+          showSoftInputOnFocus={false}
+          style={styles.hiddenScannerInput}
+        />
+
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
@@ -186,15 +321,32 @@ export default function FormLhkFinishingScreen({ navigation }: Props) {
             <Text style={styles.label}>
               SPK <Text style={styles.requiredStar}>*</Text>
             </Text>
-            <TouchableOpacity
-              style={[styles.select, isSpkInvalid && styles.selectInvalid]}
-              onPress={() => setOpenSpk(true)}
-            >
-              <Text style={[styles.selectText, !spk && styles.placeholder]}>
-                {spk ? spk.nomor : 'ketuk untuk cari SPK'}
-              </Text>
-              <MaterialIcons name="search" size={22} color="#9CA3AF" />
-            </TouchableOpacity>
+            <View style={styles.spkRow}>
+              <TouchableOpacity
+                style={[
+                  styles.select,
+                  styles.spkSelect,
+                  isSpkInvalid && styles.selectInvalid,
+                ]}
+                onPress={() => setOpenSpk(true)}
+              >
+                <Text style={[styles.selectText, !spk && styles.placeholder]}>
+                  {spk ? spk.nomor : 'ketuk untuk cari SPK'}
+                </Text>
+                <MaterialIcons name="search" size={22} color="#9CA3AF" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.scanSpkBtn}
+                onPress={() => setScannerOpen(true)}
+              >
+                <MaterialCommunityIcons
+                  name="barcode-scan"
+                  size={20}
+                  color="white"
+                />
+              </TouchableOpacity>
+            </View>
             {isSpkInvalid && (
               <Text style={styles.errorText}>SPK wajib diisi.</Text>
             )}
@@ -344,7 +496,16 @@ export default function FormLhkFinishingScreen({ navigation }: Props) {
                 placeholder="Cari nomor / nama SPK"
                 placeholderTextColor="#9CA3AF"
                 style={[styles.input, styles.searchInput]}
+                autoCapitalize="characters"
               />
+              {!!spkKeyword && (
+                <TouchableOpacity
+                  style={styles.searchClearBtn}
+                  onPress={() => setSpkKeyword('')}
+                >
+                  <MaterialIcons name="close" size={18} color="#6B7280" />
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={styles.searchBtn}
                 onPress={() => fetchSpk(spkKeyword)}
@@ -365,13 +526,7 @@ export default function FormLhkFinishingScreen({ navigation }: Props) {
                     key={item.nomor}
                     style={styles.modalItem}
                     onPress={() => {
-                      const parsed = parseUkuranText(item.ukuranRaw);
-                      const p = item.panjang ?? parsed.p;
-                      const l = item.lebar ?? parsed.l;
-
-                      setSpk(item);
-                      setPanjang(p !== undefined ? String(p) : '');
-                      setLebar(l !== undefined ? String(l) : '');
+                      applySelectedSpk(item);
                       setOpenSpk(false);
                     }}
                   >
@@ -395,6 +550,62 @@ export default function FormLhkFinishingScreen({ navigation }: Props) {
             >
               <Text style={styles.modalCloseBtnText}>Tutup</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={scannerOpen}
+        animationType="slide"
+        onRequestClose={() => setScannerOpen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'black' }}>
+          <View style={[styles.appBar, { backgroundColor: PRIMARY }]}>
+            <TouchableOpacity
+              style={styles.appBarBtn}
+              onPress={() => setScannerOpen(false)}
+            >
+              <Text style={styles.appBarBtnText}>Tutup</Text>
+            </TouchableOpacity>
+            <View style={{ flex: 1 }} />
+          </View>
+
+          {device && hasPermission ? (
+            <Camera
+              style={StyleSheet.absoluteFill}
+              device={device}
+              isActive={scannerOpen}
+              codeScanner={codeScanner}
+            />
+          ) : (
+            <View
+              style={{
+                flex: 1,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: 'white', fontWeight: '900' }}>
+                Kamera tidak tersedia / izin ditolak.
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.scanOverlay}>
+            <View style={styles.maskRowTop} />
+            <View style={styles.maskRowMiddle}>
+              <View style={styles.maskSide} />
+
+              <View style={styles.holeWrap}>
+                <View style={styles.scanFrame}>
+                  <View style={styles.scanLine} />
+                </View>
+                <Text style={styles.scanHint}>Arahkan barcode ke kotak</Text>
+              </View>
+
+              <View style={styles.maskSide} />
+            </View>
+            <View style={styles.maskRowBottom} />
           </View>
         </View>
       </Modal>
@@ -457,6 +668,16 @@ const styles = StyleSheet.create({
     marginTop: 4,
     color: '#DC2626',
     fontSize: 11,
+  },
+  spkRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  spkSelect: { flex: 1 },
+  scanSpkBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#1A237E',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   spkNameBelow: {
     marginTop: 6,
@@ -561,6 +782,17 @@ const styles = StyleSheet.create({
   modalItemHint: { fontSize: 11, color: '#374151', marginTop: 2 },
   searchRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   searchInput: { flex: 1, height: 42 },
+  searchClearBtn: {
+    marginLeft: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#F9FAFB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   searchBtn: {
     marginLeft: 8,
     backgroundColor: '#3F51B5',
@@ -590,4 +822,68 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   modalCloseBtnText: { color: '#374151', fontWeight: '700' },
+
+  hiddenScannerInput: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    opacity: 0,
+    left: -100,
+    top: -100,
+  },
+
+  appBar: {
+    backgroundColor: PRIMARY,
+    paddingTop: Platform.OS === 'ios' ? 6 : (StatusBar.currentHeight ?? 0) + 6,
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  appBarBtn: {
+    minWidth: 90,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appBarBtnText: { color: 'white', fontWeight: '900' },
+
+  scanOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  maskRowTop: { width: '100%', flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
+  maskRowMiddle: { width: '100%', flexDirection: 'row', alignItems: 'center' },
+  maskRowBottom: {
+    width: '100%',
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  maskSide: {
+    flex: 1,
+    height: FRAME_H + 70,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  holeWrap: { width: FRAME_W, alignItems: 'center' },
+  scanFrame: {
+    width: FRAME_W,
+    height: FRAME_H,
+    borderWidth: 2,
+    borderColor: '#22C55E',
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  scanLine: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    top: FRAME_H / 2,
+    height: 2,
+    backgroundColor: 'rgba(34,197,94,0.9)',
+  },
+  scanHint: { marginTop: 14, color: '#E5E7EB', fontWeight: '900' },
 });
