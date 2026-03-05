@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,12 @@ import {
   SafeAreaView,
   ScrollView,
   Alert,
+  BackHandler,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import type { RootStackParamList } from '../../App';
 import { toast } from '../../components/toastComponent';
 
@@ -29,6 +31,30 @@ type MenuItem = {
 };
 
 export default function HomeScreen({ navigation }: Props) {
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        Alert.alert('Konfirmasi Keluar', 'Yakin ingin keluar dari aplikasi?', [
+          { text: 'Batal', style: 'cancel' },
+          {
+            text: 'Keluar',
+            style: 'destructive',
+            onPress: () => BackHandler.exitApp(),
+          },
+        ]);
+
+        return true;
+      };
+
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        onBackPress,
+      );
+
+      return () => subscription.remove();
+    }, []),
+  );
+
   const confirmLogout = () => {
     Alert.alert('Konfirmasi Logout', 'Yakin ingin keluar dari aplikasi?', [
       { text: 'Batal', style: 'cancel' },

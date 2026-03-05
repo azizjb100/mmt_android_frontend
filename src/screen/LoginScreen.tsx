@@ -57,6 +57,7 @@ const LoginScreen = () => {
       <TextInput
         style={styles.input}
         placeholder="Password"
+        autoCapitalize="none"
         secureTextEntry
         value={password}
         onChangeText={setPassword}
