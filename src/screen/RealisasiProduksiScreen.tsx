@@ -14,12 +14,14 @@ import {
   TouchableOpacity,
   TextInput,
   FlatList,
+  ScrollView,
   KeyboardAvoidingView,
   Platform,
   StatusBar,
   Modal,
   SafeAreaView,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import {
@@ -33,6 +35,18 @@ import { toast } from '../../components/toastComponent';
 import ConfirmDialog from '../../components/confirmComponent';
 
 type GudangLookup = { Kode: string; Nama: string };
+type PermintaanLookup = {
+  Nomor: string;
+  Tanggal?: string;
+};
+
+type PermintaanDetailItem = {
+  SKU: string;
+  spk?: string;
+  qtyMinta?: number;
+  satuan?: string;
+  keterangan?: string;
+};
 
 type DetailItem = {
   __id: string;
@@ -52,6 +66,7 @@ type DetailItem = {
 type HeaderForm = {
   nomor: string;
   tanggal: string;
+  permintaanNomor: string;
   gudangKode: string;
   gudangNama: string;
   lokasiProduksiKode: string;
@@ -159,8 +174,124 @@ function SelectModal<T>(props: {
   );
 }
 
+function PermintaanLookupModal(props: {
+  visible: boolean;
+  items: PermintaanLookup[];
+  onSelect: (it: PermintaanLookup) => void;
+  onClose: () => void;
+}) {
+  const { visible, items, onSelect, onClose } = props;
+  const [keyword, setKeyword] = useState('');
+
+  useEffect(() => {
+    if (!visible) setKeyword('');
+  }, [visible]);
+
+  const filteredItems = useMemo(() => {
+    const q = keyword.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(it => {
+      const nomor = String(it.Nomor || '').toLowerCase();
+      const tanggal = String(it.Tanggal || '').toLowerCase();
+      return nomor.includes(q) || tanggal.includes(q);
+    });
+  }, [items, keyword]);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalBackdrop}>
+        <View style={[styles.modalCard, styles.permintaanModalCard]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Pilih Nomor Permintaan</Text>
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Text style={styles.modalClose}>×</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.searchWrap}>
+            <MaterialCommunityIcons name="magnify" size={18} color={MUTED} />
+            <TextInput
+              value={keyword}
+              onChangeText={setKeyword}
+              placeholder="Cari nomor / tanggal..."
+              placeholderTextColor="#9CA3AF"
+              style={styles.searchInput}
+            />
+            {!!keyword && (
+              <TouchableOpacity
+                onPress={() => setKeyword('')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.clearSearchBtn}
+              >
+                <Text style={styles.clearSearchText}>x</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={styles.permintaanHeadRow}>
+            <Text style={[styles.permintaanHeadText, styles.colNomor]}>
+              Nomor
+            </Text>
+            <Text style={[styles.permintaanHeadText, styles.colTanggal]}>
+              Tanggal
+            </Text>
+            <Text style={[styles.permintaanHeadText, styles.colAksi]}>
+              Aksi
+            </Text>
+          </View>
+
+          <FlatList
+            data={filteredItems}
+            keyExtractor={it => it.Nomor}
+            renderItem={({ item }) => (
+              <View style={styles.permintaanRowItem}>
+                <Text
+                  style={[styles.permintaanNomor, styles.colNomor]}
+                  numberOfLines={1}
+                >
+                  {item.Nomor}
+                </Text>
+                <Text
+                  style={[styles.permintaanTanggal, styles.colTanggal]}
+                  numberOfLines={1}
+                >
+                  {item.Tanggal || '-'}
+                </Text>
+                <View style={[styles.colAksi, styles.centerCell]}>
+                  <TouchableOpacity
+                    style={styles.bukaDataBtn}
+                    onPress={() => {
+                      onSelect(item);
+                      onClose();
+                    }}
+                  >
+                    <Text style={styles.bukaDataBtnText}>Pilih</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+            ListEmptyComponent={
+              <Text style={styles.modalEmpty}>Data tidak ditemukan</Text>
+            }
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function RealisasiProduksiScreen({ navigation }: any) {
   const [saving, setSaving] = useState(false);
+  const [showPermintaanRequiredPopup, setShowPermintaanRequiredPopup] =
+    useState(false);
   const hiddenScanInputRef = useRef<TextInput | null>(null);
   const [hiddenScanBuffer, setHiddenScanBuffer] = useState('');
 
@@ -190,6 +321,7 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
   const [header, setHeader] = useState<HeaderForm>({
     nomor: 'AUTO',
     tanggal: formatDateDDMMYYYY(new Date()),
+    permintaanNomor: '',
     gudangKode: 'WH-16',
     gudangNama: 'Gudang Bahan MMT',
     lokasiProduksiKode: 'GPM',
@@ -204,6 +336,83 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
   const [listGudang, setListGudang] = useState<GudangLookup[]>([]);
   const [openGudangAsal, setOpenGudangAsal] = useState(false);
   const [openLokasiProduksi, setOpenLokasiProduksi] = useState(false);
+  const [openPermintaan, setOpenPermintaan] = useState(false);
+  const [listPermintaan, setListPermintaan] = useState<PermintaanLookup[]>([]);
+  const [loadingPermintaan, setLoadingPermintaan] = useState(false);
+  const [loadingDetailPermintaan, setLoadingDetailPermintaan] = useState(false);
+  const [detailPermintaan, setDetailPermintaan] = useState<
+    PermintaanDetailItem[]
+  >([]);
+
+  const fetchPermintaanDetail = useCallback(async (nomor: string) => {
+    const nomorFix = String(nomor || '').trim();
+    if (!nomorFix) {
+      setDetailPermintaan([]);
+      return;
+    }
+
+    setLoadingDetailPermintaan(true);
+    try {
+      const res = await api.get(
+        `/mmt/permintaan-produksi-bahan/${encodeURIComponent(nomorFix)}`,
+        {
+          params: { _ts: Date.now() },
+        },
+      );
+
+      const data = res?.data?.data ?? res?.data;
+      const details = Array.isArray(data?.Details) ? data.Details : [];
+      const mapped: PermintaanDetailItem[] = details.map((d: any) => ({
+        SKU: String(d?.SKU ?? d?.sku ?? '').trim(),
+        spk: String(d?.spk ?? d?.SPK ?? '').trim(),
+        qtyMinta: Number(d?.qtyMinta ?? d?.QtyMinta ?? d?.qty ?? 0),
+        satuan: String(d?.satuan ?? d?.Satuan ?? '').trim(),
+        keterangan: String(d?.keterangan ?? d?.Keterangan ?? '').trim(),
+      }));
+      setDetailPermintaan(mapped);
+    } catch (e: any) {
+      setDetailPermintaan([]);
+      toast.error(
+        'Gagal',
+        String(
+          e?.response?.data?.message ||
+            e?.message ||
+            'Gagal memuat detail permintaan.',
+        ),
+      );
+    } finally {
+      setLoadingDetailPermintaan(false);
+    }
+  }, []);
+
+  const fetchPermintaanLookup = useCallback(async () => {
+    setLoadingPermintaan(true);
+    try {
+      const res = await api.get('/mmt/permintaan-produksi-bahan/lookup', {
+        params: { q: '', _ts: Date.now() },
+      });
+      const raw = pickArray(res?.data);
+      const mapped: PermintaanLookup[] = raw
+        .map((x: any) => ({
+          Nomor: String(x?.Nomor ?? x?.nomor ?? '').trim(),
+          Tanggal: String(x?.Tanggal ?? x?.tanggal ?? '').trim(),
+        }))
+        .filter((x: PermintaanLookup) => !!x.Nomor);
+      setListPermintaan(mapped);
+    } catch (e: any) {
+      toast.error(
+        'Gagal',
+        String(
+          e?.response?.data?.message ||
+            e?.message ||
+            'Gagal memuat lookup permintaan.',
+        ),
+      );
+      setListPermintaan([]);
+    } finally {
+      setLoadingPermintaan(false);
+    }
+  }, []);
 
   const fetchLookups = useCallback(async () => {
     setLoadingLookup(true);
@@ -310,9 +519,13 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
   }, [header, details]);
 
   const openScannerForRow = useCallback((rowId: string) => {
+    if (!String(header.permintaanNomor || '').trim()) {
+      setShowPermintaanRequiredPopup(true);
+      return;
+    }
     setActiveScanId(rowId);
     setScannerOpen(true);
-  }, []);
+  }, [header.permintaanNomor]);
 
   const applyBarcodeToRow = useCallback(
     (rowId: string, patch: Partial<DetailItem>) => {
@@ -331,6 +544,11 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
     async (rowId: string, barcodeValue: string) => {
       const bc = String(barcodeValue || '').trim();
       if (!bc) return;
+
+      if (!String(header.permintaanNomor || '').trim()) {
+        setShowPermintaanRequiredPopup(true);
+        return;
+      }
 
       if (!String(header.gudangKode || '').trim()) {
         return toast.warn(
@@ -387,7 +605,13 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
         );
       }
     },
-    [details, header.gudangKode, applyBarcodeToRow, ensureLastBlankRow],
+    [
+      details,
+      header.permintaanNomor,
+      header.gudangKode,
+      applyBarcodeToRow,
+      ensureLastBlankRow,
+    ],
   );
 
   const getAutoTargetRowId = useCallback(() => {
@@ -426,12 +650,9 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
     ],
   );
 
-  const onHiddenScannerChange = useCallback(
-    (text: string) => {
-      setHiddenScanBuffer(text);
-    },
-    [],
-  );
+  const onHiddenScannerChange = useCallback((text: string) => {
+    setHiddenScanBuffer(text);
+  }, []);
 
   const codeScanner = useCodeScanner({
     codeTypes: ['code-128', 'ean-13', 'qr'],
@@ -475,6 +696,20 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
       if (!valid.length)
         return toast.warn('Validasi', 'Minimal satu barcode harus diisi.');
 
+      let userCreate = 'SYSTEM';
+      try {
+        const rawUser = await AsyncStorage.getItem('userData');
+        if (rawUser) {
+          const parsed = JSON.parse(rawUser);
+          userCreate =
+            String(
+              parsed?.kdUser || parsed?.KDUSER || parsed?.username || 'SYSTEM',
+            ) || 'SYSTEM';
+        }
+      } catch {
+        userCreate = 'SYSTEM';
+      }
+
       const payload = {
         header: {
           nomor: header.nomor,
@@ -482,7 +717,8 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
           mnt_gdg_kode: header.gudangKode,
           mnt_lokasiproduksi: header.lokasiProduksiKode,
           mnt_keterangan: header.keteranganHeader,
-          user_create: 'Admin',
+          mnt_permintaan: String(header.permintaanNomor || '').trim() || null,
+          user_create: userCreate,
         },
         details: valid.map(d => ({
           sku: d.sku,
@@ -635,74 +871,193 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
         {/* Header form */}
         {!headerCollapsed && (
           <View style={styles.headerCard}>
-            <View style={styles.formRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.label}>Tanggal</Text>
-                <TextInput
-                  style={styles.input}
-                  value={header.tanggal}
-                  editable={false}
-                />
+            <ScrollView
+              style={styles.headerScrollArea}
+              contentContainerStyle={styles.headerScrollContent}
+              nestedScrollEnabled
+              showsVerticalScrollIndicator
+            >
+              <View style={styles.formRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>Tanggal</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: BG }]}
+                    value={header.tanggal}
+                    editable={false}
+                  />
+                </View>
+
+                <View style={{ width: 10 }} />
+
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>Gudang Asal</Text>
+                  <TouchableOpacity
+                    onPress={() => setOpenGudangAsal(true)}
+                    activeOpacity={0.85}
+                    disabled={saving || isGudangAsalLocked}
+                  >
+                    <View pointerEvents="none">
+                      <TextInput
+                        style={[
+                          styles.input,
+                          (saving || isGudangAsalLocked) &&
+                            styles.inputDisabled,
+                        ]}
+                        value={header.gudangKode}
+                        editable={false}
+                      />
+                    </View>
+                  </TouchableOpacity>
+                  <Text style={styles.subText}>{header.gudangNama}</Text>
+                </View>
               </View>
 
-              <View style={{ width: 10 }} />
-
-              <View style={{ flex: 1 }}>
-                <Text style={styles.label}>Gudang Asal</Text>
+              <View style={{ marginTop: 10 }}>
+                <Text style={styles.label}>Lokasi Produksi</Text>
                 <TouchableOpacity
-                  onPress={() => setOpenGudangAsal(true)}
+                  onPress={() => setOpenLokasiProduksi(true)}
                   activeOpacity={0.85}
-                  disabled={saving || isGudangAsalLocked}
+                  disabled={saving}
                 >
                   <View pointerEvents="none">
                     <TextInput
-                      style={[
-                        styles.input,
-                        (saving || isGudangAsalLocked) && styles.inputDisabled,
-                      ]}
-                      value={header.gudangKode}
+                      style={styles.input}
+                      value={header.lokasiProduksiKode}
                       editable={false}
                     />
                   </View>
                 </TouchableOpacity>
-                <Text style={styles.subText}>{header.gudangNama}</Text>
+                <Text style={styles.subText}>{header.lokasiProduksiNama}</Text>
               </View>
-            </View>
 
-            <View style={{ marginTop: 10 }}>
-              <Text style={styles.label}>Lokasi Produksi</Text>
-              <TouchableOpacity
-                onPress={() => setOpenLokasiProduksi(true)}
-                activeOpacity={0.85}
-                disabled={saving}
-              >
-                <View pointerEvents="none">
+              <View style={{ marginTop: 10 }}>
+                <Text style={styles.label}>No. Permintaan</Text>
+                <View style={styles.permintaanRow}>
                   <TextInput
-                    style={styles.input}
-                    value={header.lokasiProduksiKode}
+                    style={[styles.input, styles.permintaanInput]}
+                    value={header.permintaanNomor}
+                    placeholder="Cari Dokumen Permintaan"
+                    placeholderTextColor="#9AA0A6"
                     editable={false}
+                    onChangeText={v =>
+                      setHeader(p => ({ ...p, permintaanNomor: v }))
+                    }
                   />
+                  <TouchableOpacity
+                    style={styles.lookupBtn}
+                    onPress={() => {
+                      setOpenPermintaan(true);
+                      fetchPermintaanLookup();
+                    }}
+                    disabled={saving}
+                  >
+                    <MaterialCommunityIcons
+                      name="magnify"
+                      size={20}
+                      color="white"
+                    />
+                  </TouchableOpacity>
                 </View>
-              </TouchableOpacity>
-              <Text style={styles.subText}>{header.lokasiProduksiNama}</Text>
-            </View>
+                {!!loadingPermintaan && (
+                  <Text style={styles.smallInfo}>
+                    Memuat lookup permintaan...
+                  </Text>
+                )}
 
-            <View style={{ marginTop: 10 }}>
-              <Text style={styles.label}>Keterangan</Text>
-              <TextInput
-                style={[styles.input, { textAlign: 'left' }]}
-                value={header.keteranganHeader}
-                placeholder="(opsional)"
-                placeholderTextColor="#9AA0A6"
-                onChangeText={v =>
-                  setHeader(p => ({ ...p, keteranganHeader: v }))
-                }
-              />
-            </View>
+                {!!header.permintaanNomor && (
+                  <View style={styles.permintaanDetailWrap}>
+                    <Text style={styles.permintaanDetailTitle}>
+                      Detail Permintaan ({`${detailPermintaan.length} item`})
+                    </Text>
 
-            {loadingLookup && (
-              <Text style={styles.smallInfo}>Memuat lookup gudang...</Text>
-            )}
+                    <View style={styles.permintaanDetailHead}>
+                      <Text
+                        style={[styles.permintaanDetailHeadText, { flex: 2 }]}
+                      >
+                        SKU
+                      </Text>
+                      <Text
+                        style={[
+                          styles.permintaanDetailHeadText,
+                          { flex: 1, textAlign: 'center' },
+                        ]}
+                      >
+                        Qty Minta
+                      </Text>
+                      <Text
+                        style={[
+                          styles.permintaanDetailHeadText,
+                          { flex: 1, textAlign: 'center' },
+                        ]}
+                      >
+                        Satuan
+                      </Text>
+                    </View>
+
+                    {loadingDetailPermintaan ? (
+                      <Text style={styles.smallInfo}>
+                        Memuat detail permintaan...
+                      </Text>
+                    ) : detailPermintaan.length === 0 ? (
+                      <Text style={styles.smallInfo}>
+                        Detail permintaan belum tersedia.
+                      </Text>
+                    ) : (
+                      <View style={styles.permintaanDetailList}>
+                        {detailPermintaan.map((d, idx) => (
+                          <View
+                            key={`${d.SKU}-${idx}`}
+                            style={styles.permintaanDetailRow}
+                          >
+                            <Text
+                              style={[styles.permintaanDetailCell, { flex: 2 }]}
+                              numberOfLines={1}
+                            >
+                              {d.SKU || '-'}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.permintaanDetailCell,
+                                { flex: 1, textAlign: 'center' },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {num(d.qtyMinta)}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.permintaanDetailCell,
+                                { flex: 1, textAlign: 'center' },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {d.satuan || '-'}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                )}
+              </View>
+
+              <View style={{ marginTop: 10 }}>
+                <Text style={styles.label}>Keterangan</Text>
+                <TextInput
+                  style={[styles.input, { textAlign: 'left' }]}
+                  value={header.keteranganHeader}
+                  placeholder="(opsional)"
+                  placeholderTextColor="#9AA0A6"
+                  onChangeText={v =>
+                    setHeader(p => ({ ...p, keteranganHeader: v }))
+                  }
+                />
+              </View>
+
+              {loadingLookup && (
+                <Text style={styles.smallInfo}>Memuat lookup gudang...</Text>
+              )}
+            </ScrollView>
           </View>
         )}
 
@@ -771,6 +1126,57 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
           }
           onClose={() => setOpenLokasiProduksi(false)}
         />
+
+        <PermintaanLookupModal
+          visible={openPermintaan}
+          items={listPermintaan}
+          onSelect={p => {
+            setHeader(prev => ({ ...prev, permintaanNomor: p.Nomor }));
+            fetchPermintaanDetail(p.Nomor);
+            setShowPermintaanRequiredPopup(false);
+          }}
+          onClose={() => setOpenPermintaan(false)}
+        />
+
+        <Modal
+          visible={showPermintaanRequiredPopup}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowPermintaanRequiredPopup(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.permintaanRequiredCard}>
+              <Text style={styles.permintaanRequiredTitle}>
+                Nomor Permintaan Wajib Diisi
+              </Text>
+              <Text style={styles.permintaanRequiredDesc}>
+                Silakan pilih nomor permintaan terlebih dahulu sebelum scan barcode.
+              </Text>
+
+              <View style={styles.permintaanRequiredActions}>
+                <TouchableOpacity
+                  style={styles.permintaanRequiredGhostBtn}
+                  onPress={() => setShowPermintaanRequiredPopup(false)}
+                >
+                  <Text style={styles.permintaanRequiredGhostText}>Nanti</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.permintaanRequiredPrimaryBtn}
+                  onPress={() => {
+                    setShowPermintaanRequiredPopup(false);
+                    setOpenPermintaan(true);
+                    fetchPermintaanLookup();
+                  }}
+                >
+                  <Text style={styles.permintaanRequiredPrimaryText}>
+                    Pilih Nomor
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         {/* Scanner Modal */}
         <Modal
@@ -897,9 +1303,16 @@ const styles = StyleSheet.create({
     margin: 12,
     backgroundColor: CARD,
     borderRadius: 16,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingTop: 12,
     borderWidth: 1,
     borderColor: BORDER,
+  },
+  headerScrollArea: {
+    maxHeight: 320,
+  },
+  headerScrollContent: {
+    paddingBottom: 12,
   },
   formRow: { flexDirection: 'row', gap: 10 },
   label: {
@@ -926,6 +1339,63 @@ const styles = StyleSheet.create({
   },
   subText: { color: MUTED, fontWeight: '700', marginTop: 6, fontSize: 12 },
   smallInfo: { marginTop: 10, color: MUTED, fontWeight: '700', fontSize: 12 },
+  permintaanRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  permintaanInput: { flex: 1, textAlign: 'left' },
+  lookupBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: PRIMARY,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  permintaanDetailWrap: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+  },
+  permintaanDetailTitle: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    color: '#111827',
+    fontWeight: '900',
+    backgroundColor: '#F8FAFC',
+  },
+  permintaanDetailHead: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  permintaanDetailHeadText: {
+    color: '#374151',
+    fontWeight: '800',
+    fontSize: 12,
+    textAlign: 'left',
+  },
+  permintaanDetailList: {
+    maxHeight: 160,
+  },
+  permintaanDetailRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEF2F7',
+  },
+  permintaanDetailCell: {
+    color: '#111827',
+    fontSize: 12,
+    fontWeight: '700',
+    paddingRight: 6,
+  },
 
   toolbar: {
     marginHorizontal: 12,
@@ -1100,5 +1570,133 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: MUTED,
     fontWeight: '700',
+  },
+
+  permintaanModalCard: {
+    width: '100%',
+    maxHeight: '80%',
+  },
+  searchWrap: {
+    margin: 10,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 2,
+    marginLeft: 8,
+    color: '#111827',
+    fontWeight: '700',
+  },
+  clearSearchBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E5E7EB',
+  },
+  clearSearchText: {
+    color: '#374151',
+    fontWeight: '900',
+    fontSize: 12,
+    lineHeight: 12,
+  },
+  permintaanHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  permintaanHeadText: { color: '#111827', fontWeight: '900', fontSize: 12 },
+  permintaanRowItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEF2F7',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  colNomor: { flex: 2.2 },
+  colTanggal: { flex: 1.3, textAlign: 'center' },
+  colAksi: { flex: 1.1, textAlign: 'center' },
+  centerCell: { alignItems: 'center', justifyContent: 'center' },
+  permintaanNomor: {
+    color: '#1565C0',
+    fontWeight: '900',
+    fontSize: 14,
+  },
+  permintaanTanggal: {
+    color: '#4B5563',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  bukaDataBtn: {
+    backgroundColor: '#3F51B5',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  bukaDataBtnText: {
+    color: 'white',
+    fontWeight: '900',
+    fontSize: 12,
+  },
+
+  permintaanRequiredCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  permintaanRequiredTitle: {
+    color: '#111827',
+    fontWeight: '900',
+    fontSize: 16,
+  },
+  permintaanRequiredDesc: {
+    marginTop: 8,
+    color: '#4B5563',
+    fontWeight: '700',
+    lineHeight: 20,
+  },
+  permintaanRequiredActions: {
+    marginTop: 14,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  permintaanRequiredGhostBtn: {
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#fff',
+  },
+  permintaanRequiredGhostText: {
+    color: '#374151',
+    fontWeight: '800',
+  },
+  permintaanRequiredPrimaryBtn: {
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: PRIMARY,
+  },
+  permintaanRequiredPrimaryText: {
+    color: 'white',
+    fontWeight: '900',
   },
 });

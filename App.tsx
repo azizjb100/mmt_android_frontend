@@ -7,7 +7,6 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import LoginScreen from './src/screen/LoginScreen';
 import HomeScreen from './src/screen/HomeScreen';
 import RealisasiProduksiScreen from './src/screen/RealisasiProduksiScreen';
-import KoreksiStokViewScreen from './src/screen/KoreksiStokViewScreen';
 import FormKoreksiStokScreen from './src/screen/FormKoreksiStokScreen';
 import LhkFinishingViewScreen from './src/screen/LhkFinishingViewScreen';
 import FormLhkFinishingScreen from './src/screen/FormLhkFinishingScreen';
@@ -18,7 +17,6 @@ export type RootStackParamList = {
   Login: undefined;
   Home: undefined;
   RealisasiProduksi: undefined;
-  KoreksiStokView: undefined;
   LhkFinishing: undefined;
   FormLhkFinishing: undefined;
   FormKoreksiStok: undefined;
@@ -46,15 +44,6 @@ export default function App(): React.JSX.Element {
           <Stack.Screen
             name="RealisasiProduksi"
             component={RealisasiProduksiScreen}
-          />
-
-          <Stack.Screen
-            name="KoreksiStokView"
-            component={KoreksiStokViewScreen}
-            options={{
-              headerShown: true,
-              title: 'Koreksi Stok',
-            }}
           />
 
           <Stack.Screen

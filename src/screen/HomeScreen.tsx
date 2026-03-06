@@ -17,10 +17,7 @@ import type { RootStackParamList } from '../../App';
 import { toast } from '../../components/toastComponent';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
-type HomeDirectScreen =
-  | 'RealisasiProduksi'
-  | 'KoreksiStokView'
-  | 'LhkFinishing';
+type HomeDirectScreen = 'RealisasiProduksi' | 'LhkFinishing';
 
 type MenuItem = {
   id: number;
@@ -78,13 +75,6 @@ export default function HomeScreen({ navigation }: Props) {
       color: '#1A237E',
       short: 'RP',
       screen: 'RealisasiProduksi',
-    },
-    {
-      id: 2,
-      title: 'Koreksi Stok',
-      color: '#1A237E',
-      short: 'KS',
-      screen: 'KoreksiStokView',
     },
     {
       id: 3,
