@@ -361,8 +361,8 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
       );
 
       const data = res?.data?.data ?? res?.data;
-      const details = Array.isArray(data?.Details) ? data.Details : [];
-      const mapped: PermintaanDetailItem[] = details.map((d: any) => ({
+      const detailsData = Array.isArray(data?.Details) ? data.Details : [];
+      const mapped: PermintaanDetailItem[] = detailsData.map((d: any) => ({
         SKU: String(d?.SKU ?? d?.sku ?? '').trim(),
         spk: String(d?.spk ?? d?.SPK ?? '').trim(),
         qtyMinta: Number(d?.qtyMinta ?? d?.QtyMinta ?? d?.qty ?? 0),
@@ -518,14 +518,17 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
     return headerOk && hasDetail;
   }, [header, details]);
 
-  const openScannerForRow = useCallback((rowId: string) => {
-    if (!String(header.permintaanNomor || '').trim()) {
-      setShowPermintaanRequiredPopup(true);
-      return;
-    }
-    setActiveScanId(rowId);
-    setScannerOpen(true);
-  }, [header.permintaanNomor]);
+  const openScannerForRow = useCallback(
+    (rowId: string) => {
+      if (!String(header.permintaanNomor || '').trim()) {
+        setShowPermintaanRequiredPopup(true);
+        return;
+      }
+      setActiveScanId(rowId);
+      setScannerOpen(true);
+    },
+    [header.permintaanNomor],
+  );
 
   const applyBarcodeToRow = useCallback(
     (rowId: string, patch: Partial<DetailItem>) => {
@@ -1150,7 +1153,8 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
                 Nomor Permintaan Wajib Diisi
               </Text>
               <Text style={styles.permintaanRequiredDesc}>
-                Silakan pilih nomor permintaan terlebih dahulu sebelum scan barcode.
+                Silakan pilih nomor permintaan terlebih dahulu sebelum scan
+                barcode.
               </Text>
 
               <View style={styles.permintaanRequiredActions}>
