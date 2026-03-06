@@ -11,7 +11,6 @@ import {
 } from 'react-native';
 import DatePicker from 'react-native-date-picker';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import api from '../api/api.services';
 import { toast } from '../../components/toastComponent';
@@ -92,8 +91,6 @@ const pickArray = (v: any) => {
 };
 
 export default function LhkFinishingViewScreen({ navigation }: any) {
-  const insets = useSafeAreaInsets();
-
   const [startDate, setStartDate] = useState(() =>
     toDisplayDate(new Date(Date.now() - 30 * 86400000)),
   );
@@ -310,17 +307,16 @@ export default function LhkFinishingViewScreen({ navigation }: any) {
   };
 
   return (
-    <View
-      style={[
-        styles.safeArea,
-        { paddingTop: insets.top, paddingBottom: insets.bottom },
-      ]}
-    >
+    <View style={[styles.safeArea]}>
       <View style={styles.filterCard}>
         {/* Header actions */}
         <View style={styles.actions}>
           <TouchableOpacity
-            style={[styles.actionBtn, styles.btnSuccess, loading && styles.btnDisabled]}
+            style={[
+              styles.actionBtn,
+              styles.btnSuccess,
+              loading && styles.btnDisabled,
+            ]}
             onPress={() => navigation.navigate('FormLhkFinishing')}
             disabled={loading}
             activeOpacity={0.85}
