@@ -90,11 +90,11 @@ const num = (v: any) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
-const formatDateDDMMYYYY = (date: Date) => {
+const formatDateYYYYMMDD = (date: Date) => {
   const dd = String(date.getDate()).padStart(2, '0');
   const mm = String(date.getMonth() + 1).padStart(2, '0');
   const yyyy = date.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+  return `${yyyy}-${mm}-${dd}`;
 };
 
 const pickArray = (data: any): any[] => {
@@ -320,7 +320,7 @@ export default function RealisasiProduksiScreen({ navigation }: any) {
 
   const [header, setHeader] = useState<HeaderForm>({
     nomor: 'AUTO',
-    tanggal: formatDateDDMMYYYY(new Date()),
+    tanggal: formatDateYYYYMMDD(new Date()),
     permintaanNomor: '',
     gudangKode: 'WH-16',
     gudangNama: 'Gudang Bahan MMT',
